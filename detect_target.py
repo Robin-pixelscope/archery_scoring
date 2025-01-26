@@ -83,13 +83,17 @@ class DETECT_TARGET:
                     center = (int(ellipse[0][0]), int(ellipse[0][1]))
 
                     # 타원의 너비와 높이가 유효한지 확인
-                    if ellipse[1][0] > 0 and ellipse[1][1] > 0:
+                    if (
+                        ellipse[1][0] > 0
+                        and ellipse[1][1] > 0
+                        and abs(ellipse[1][0] - ellipse[1][1]) <= 20
+                    ):
                         # 타원의 중심점이 이미지 중심에서 반지름 100 이내에 있는지 확인
                         distance = np.sqrt(
                             (center[0] - image_center[0]) ** 2
                             + (center[1] - image_center[1]) ** 2
                         )
-                        if distance <= 150:
+                        if distance <= 70:
                             cv2.ellipse(output, ellipse, (0, 255, 0), 2)
                             # cv2.circle(
                             #     output, (center[0], center[1]), 5, (0, 0, 255), -1

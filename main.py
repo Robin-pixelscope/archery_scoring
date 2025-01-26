@@ -113,7 +113,7 @@ def main(bg_image_path, frame_image_path):
         cv2.ellipse(output, c_el, (0, 255, 0), 2)
     for e_el in edge_ellipses:
         e_el = (e_el[0], (e_el[1][0] * 2, e_el[1][1] * 2), e_el[2])
-        cv2.ellipse(output, e_el, (255, 0, 0), 2)
+        cv2.ellipse(output, e_el, (0, 255, 0), 2)
 
     cv2.imshow("output", output)
     cv2.waitKey()
@@ -153,8 +153,8 @@ if __name__ == "__main__":
     # bg_image_path = "./testset/RA_cam2/processed/warped_20240912153113_A02_bg.jpg"
     # frame_image_path = "./testset/RA_cam2/processed/warped_20240912153113_A02_0.jpg"
 
-    bg_image_path = "./testset/RA_cam2/processed/warped_20240912153355_A02_2.jpg"
-    frame_image_path = "./testset/RA_cam2/processed/warped_20240912153355_A02_2.jpg"
+    # bg_image_path = "./testset/RA_cam2/processed/warped_20240912153355_A02_2.jpg"
+    # frame_image_path = "./testset/RA_cam2/processed/warped_20240912153355_A02_2.jpg"
 
     # bg_image_path = "./testset/RA_cam1/processed/warped_20240912153113_A01_1.jpg"
     # frame_image_path = "./testset/RA_cam1/processed/warped_20240912153113_A01_2.jpg"
@@ -168,16 +168,16 @@ if __name__ == "__main__":
     # bg_image_path = "./testset/RA_cam1/processed/warped_20240912153113_A01_bg.jpg"
     # frame_image_path = "./testset/RA_cam1/processed/warped_20240912153113_A01_0.jpg"
 
-    main(bg_image_path, frame_image_path)
+    # main(bg_image_path, frame_image_path)
 
-    # home_dir = "./testset/RA_cam2/processed"
-    # # 폴더에서 파일 이름 읽기
-    # all_files = os.listdir(home_dir)
+    home_dir = "./testset/RA_cam3/processed"
+    # 폴더에서 파일 이름 읽기
+    all_files = os.listdir(home_dir)
 
-    # pair_list = select_input_images(all_files)
+    pair_list = select_input_images(all_files)
 
-    # for i in pair_list:
-    #     bg_image_path = os.path.join(home_dir, i[0])
-    #     frame_image_path = os.path.join(home_dir, i[1])
-    #     print(f"Processing: {bg_image_path}, {frame_image_path}")
-    #     main(bg_image_path, frame_image_path)
+    for i in pair_list:
+        bg_image_path = os.path.join(home_dir, i[0])
+        frame_image_path = os.path.join(home_dir, i[1])
+        # print(f"Processing: {bg_image_path}, {frame_image_path}")
+        main(bg_image_path, frame_image_path)

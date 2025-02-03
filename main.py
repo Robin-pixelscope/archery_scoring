@@ -115,9 +115,12 @@ def main(bg_image_path, frame_image_path):
         e_el = (e_el[0], (e_el[1][0] * 2, e_el[1][1] * 2), e_el[2])
         cv2.ellipse(output, e_el, (0, 255, 0), 2)
 
-    cv2.imshow("output", output)
-    cv2.waitKey()
-    cv2.destroyAllWindows()
+    cv2.imwrite(
+        f"./testset/20250122_145719/results/cam2/{bg_image_path.split('/')[-1]}", output
+    )
+    # cv2.imshow("output", output)
+    # cv2.waitKey()
+    # cv2.destroyAllWindows()
 
     end_time = time.time()
     print(f"Elapsed Time: {end_time - start_time:.2f} sec")
@@ -170,7 +173,7 @@ if __name__ == "__main__":
 
     # main(bg_image_path, frame_image_path)
 
-    home_dir = "./testset/RA_cam3/processed"
+    home_dir = "./testset/20250122_145719/cam2"
     # 폴더에서 파일 이름 읽기
     all_files = os.listdir(home_dir)
 

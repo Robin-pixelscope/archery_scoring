@@ -7,6 +7,7 @@ from typing import Tuple, List
 from collections import defaultdict
 from detect_shaft import DETECT_SHAFT
 from detect_target import DETECT_TARGET
+from detect_target_2 import DETECT_TARGET_2
 from visualize import TargetVisualizer
 
 from collections import defaultdict
@@ -82,7 +83,8 @@ def main(bg_image_path, frame_image_path):
     # x, y = shaft_detector.main()
     x, y = 938, 905
 
-    target_detector = DETECT_TARGET(
+    # Test -----------------------------------------------------------------------
+    target_detector = DETECT_TARGET_2(
         bg_image_path,
         x,
         y,
@@ -92,38 +94,53 @@ def main(bg_image_path, frame_image_path):
         max_ellipses=15,
     )
     start_time = time.time()
-    center, score, color_ellipses = target_detector.process_color_based_segmentation()
-    edge_ellipses = target_detector.process_edge_based_detection()
-    output = cv2.imread(bg_image_path)
-    circle_8 = (
-        color_ellipses[0][0],
-        (color_ellipses[0][1][0] * 3, color_ellipses[0][1][1] * 3),
-        color_ellipses[0][2],
-    )
-    circle_6 = (
-        color_ellipses[0][0],
-        (color_ellipses[0][1][0] * 5, color_ellipses[0][1][1] * 5),
-        color_ellipses[0][2],
-    )
-    cv2.ellipse(output, color_ellipses[0], (0, 255, 0), 2)  # 10점원
-    cv2.ellipse(output, circle_8, (0, 255, 0), 2)  # 8점원
-    cv2.ellipse(output, circle_6, (0, 255, 0), 2)  # 6점원
-    for c_el in color_ellipses:
-        c_el = (c_el[0], (c_el[1][0] * 2, c_el[1][1] * 2), c_el[2])
-        cv2.ellipse(output, c_el, (0, 255, 0), 2)
-    for e_el in edge_ellipses:
-        e_el = (e_el[0], (e_el[1][0] * 2, e_el[1][1] * 2), e_el[2])
-        cv2.ellipse(output, e_el, (0, 255, 0), 2)
+    target_detector.process_target_detection()
+    # ----------------------------------------------------------------------------
 
-    cv2.imwrite(
-        f"./testset/20250122_145719/results/cam2/{bg_image_path.split('/')[-1]}", output
-    )
-    # cv2.imshow("output", output)
-    # cv2.waitKey()
-    # cv2.destroyAllWindows()
+    # target_detector = DETECT_TARGET(
+    #     bg_image_path,
+    #     x,
+    #     y,
+    #     min_area=5000,
+    #     max_area=1000000,
+    #     center_tolerance=300,
+    #     max_ellipses=15,
+    # )
+    # start_time = time.time()
+    # center, score, color_ellipses = target_detector.process_color_based_segmentation()
+    # edge_ellipses = target_detector.process_edge_based_detection()
+    # output = cv2.imread(bg_image_path)
+    # circle_8 = (
+    #     color_ellipses[0][0],
+    #     (color_ellipses[0][1][0] * 3, color_ellipses[0][1][1] * 3),
+    #     color_ellipses[0][2],
+    # )
+    # circle_6 = (
+    #     color_ellipses[0][0],
+    #     (color_ellipses[0][1][0] * 5, color_ellipses[0][1][1] * 5),
+    #     color_ellipses[0][2],
+    # )
+    # cv2.ellipse(output, color_ellipses[0], (0, 255, 0), 2)  # 10점원
+    # cv2.ellipse(output, circle_8, (0, 255, 0), 2)  # 8점원
+    # cv2.ellipse(output, circle_6, (0, 255, 0), 2)  # 6점원
+    # for c_el in color_ellipses:
+    #     c_el = (c_el[0], (c_el[1][0] * 2, c_el[1][1] * 2), c_el[2])
+    #     cv2.ellipse(output, c_el, (0, 255, 0), 2)
+    # for e_el in edge_ellipses:
+    #     e_el = (e_el[0], (e_el[1][0] * 2, e_el[1][1] * 2), e_el[2])
+    #     cv2.ellipse(output, e_el, (0, 255, 0), 2)
 
-    end_time = time.time()
-    print(f"Elapsed Time: {end_time - start_time:.2f} sec")
+    # cv2.imwrite(
+    #     f"./testset/20250122_145719/results/cam2/{bg_image_path.split('/')[-1]}", output
+    # )
+    # # cv2.imshow("output", output)
+    # # cv2.waitKey()
+    # # cv2.destroyAllWindows()
+
+    # end_time = time.time()
+    # print(f"Elapsed Time: {end_time - start_time:.2f} sec")
+
+    # --------------------------------------------------------------------------------
     # print(f"Color_based : {ellipse_a} \n")
     # print(f"Edge_based : {ellipse_b}")
 

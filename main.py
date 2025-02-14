@@ -7,7 +7,7 @@ from typing import Tuple, List
 from collections import defaultdict
 from detect_shaft import DETECT_SHAFT
 from detect_target import DETECT_TARGET
-from detect_target_2 import DETECT_TARGET_2
+from detect_target_test import DETECT_TARGET_TEST
 from visualize import TargetVisualizer
 
 from collections import defaultdict
@@ -51,19 +51,6 @@ def select_input_images(files):
 
 @dataclass
 class CVParams:
-    # # A02_0
-    # thres_value: int = 25
-    # kernel_size: Tuple[int, int] = (3, 3)
-    # gaussianblur_kernel_size: Tuple[int, int] = (5, 5)
-    # bilateral_sigma_value: List[int] = (5, 15, 15)
-    # shaft_min_area: int = 500
-    # canny_thres: List[int] = (15, 150)
-    # houghline_thres: int = 30
-    # houghline_minLineLength: int = 150
-    # houghline_maxLineGap: int = 15
-    # shaft_line_maxdistance: int = 50
-
-    # A03_0
     thres_value: int = 25
     kernel_size: Tuple[int, int] = (5, 5)
     gaussianblur_kernel_size: Tuple[int, int] = (5, 5)
@@ -75,6 +62,18 @@ class CVParams:
     houghline_maxLineGap: int = 15
     shaft_line_maxdistance: int = 50
 
+    # # A02_0- Testing
+    # thres_value: int = 25
+    # kernel_size: Tuple[int, int] = (3, 3)
+    # gaussianblur_kernel_size: Tuple[int, int] = (5, 5)
+    # bilateral_sigma_value: List[int] = (5, 15, 15)
+    # shaft_min_area: int = 500
+    # canny_thres: List[int] = (15, 150)
+    # houghline_thres: int = 30
+    # houghline_minLineLength: int = 150
+    # houghline_maxLineGap: int = 15
+    # shaft_line_maxdistance: int = 50
+
 
 def main(bg_image_path, frame_image_path):
     cv_params = CVParams()
@@ -83,8 +82,7 @@ def main(bg_image_path, frame_image_path):
     # x, y = shaft_detector.main()
     x, y = 938, 905
 
-    # Test -----------------------------------------------------------------------
-    target_detector = DETECT_TARGET_2(
+    target_detector = DETECT_TARGET(
         bg_image_path,
         x,
         y,
@@ -94,10 +92,26 @@ def main(bg_image_path, frame_image_path):
         max_ellipses=15,
     )
     start_time = time.time()
-    target_detector.process_target_detection()
-    # ----------------------------------------------------------------------------
+    center, score, color_ellipses = target_detector.process_target_detection()
+    # Example usage:
+    img = cv2.imread(frame_image_path)
 
-    # target_detector = DETECT_TARGET(
+    # Create the visualizer
+    visualizer = TargetVisualizer(center[0], center[1])
+
+    # Example hit points with scores
+    hits = [{"point": (x, y), "score": score}]
+
+    # Draw the visualization
+    output_img = visualizer.visualize(img, hits)
+
+    # Display the image
+    cv2.imshow("Visualization", output_img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+
+    # # Test -----------------------------------------------------------------------
+    # target_detector = DETECT_TARGET_TEST(
     #     bg_image_path,
     #     x,
     #     y,
@@ -107,90 +121,12 @@ def main(bg_image_path, frame_image_path):
     #     max_ellipses=15,
     # )
     # start_time = time.time()
-    # center, score, color_ellipses = target_detector.process_color_based_segmentation()
-    # edge_ellipses = target_detector.process_edge_based_detection()
-    # output = cv2.imread(bg_image_path)
-    # circle_8 = (
-    #     color_ellipses[0][0],
-    #     (color_ellipses[0][1][0] * 3, color_ellipses[0][1][1] * 3),
-    #     color_ellipses[0][2],
-    # )
-    # circle_6 = (
-    #     color_ellipses[0][0],
-    #     (color_ellipses[0][1][0] * 5, color_ellipses[0][1][1] * 5),
-    #     color_ellipses[0][2],
-    # )
-    # cv2.ellipse(output, color_ellipses[0], (0, 255, 0), 2)  # 10점원
-    # cv2.ellipse(output, circle_8, (0, 255, 0), 2)  # 8점원
-    # cv2.ellipse(output, circle_6, (0, 255, 0), 2)  # 6점원
-    # for c_el in color_ellipses:
-    #     c_el = (c_el[0], (c_el[1][0] * 2, c_el[1][1] * 2), c_el[2])
-    #     cv2.ellipse(output, c_el, (0, 255, 0), 2)
-    # for e_el in edge_ellipses:
-    #     e_el = (e_el[0], (e_el[1][0] * 2, e_el[1][1] * 2), e_el[2])
-    #     cv2.ellipse(output, e_el, (0, 255, 0), 2)
-
-    # cv2.imwrite(
-    #     f"./testset/20250122_145719/results/cam2/{bg_image_path.split('/')[-1]}", output
-    # )
-    # # cv2.imshow("output", output)
-    # # cv2.waitKey()
-    # # cv2.destroyAllWindows()
-
-    # end_time = time.time()
-    # print(f"Elapsed Time: {end_time - start_time:.2f} sec")
-
-    # --------------------------------------------------------------------------------
-    # print(f"Color_based : {ellipse_a} \n")
-    # print(f"Edge_based : {ellipse_b}")
-
-    # 가장 가까운 타원 찾기
-    # min_index, min_distance = target_detector.closest_ellipse(ellipse_a)
-    # print(f"Closest Ellipse Index: {min_index}")
-    # print(f"Distance to Closest Ellipse: {min_distance:.2f}")
-
-    # # Example usage:
-    # img = cv2.imread(frame_image_path)
-
-    # # Create the visualizer
-    # visualizer = TargetVisualizer(center[0], center[1])
-
-    # # Example hit points with scores
-    # hits = [{"point": (x, y), "score": score}]
-
-    # # Draw the visualization
-    # output_img = visualizer.visualize(img, hits)
-
-    # # Display the image
-    # cv2.imshow("Visualization", output_img)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+    # target_detector.process_target_detection()
+    # # ----------------------------------------------------------------------------
 
 
 if __name__ == "__main__":
-
-    # 이미지를 읽어옵니다.
-    # bg_image_path = "./testset/RA_cam2/processed/warped_20240912153113_A02_bg.jpg"
-    # frame_image_path = "./testset/RA_cam2/processed/warped_20240912153113_A02_0.jpg"
-
-    # bg_image_path = "./testset/RA_cam2/processed/warped_20240912153355_A02_2.jpg"
-    # frame_image_path = "./testset/RA_cam2/processed/warped_20240912153355_A02_2.jpg"
-
-    # bg_image_path = "./testset/RA_cam1/processed/warped_20240912153113_A01_1.jpg"
-    # frame_image_path = "./testset/RA_cam1/processed/warped_20240912153113_A01_2.jpg"
-
-    # bg_image_path = "./testset/RA_cam3/processed/warped_20240912153113_A03_bg.jpg"
-    # frame_image_path = "./testset/RA_cam3/processed/warped_20240912153113_A03_0.jpg"
-
-    # bg_image_path = "./testset/RA_cam3/processed/warped_20240912153113_A03_0.jpg"
-    # frame_image_path = "./testset/RA_cam3/processed/warped_20240912153113_A03_1.jpg"
-
-    # bg_image_path = "./testset/RA_cam1/processed/warped_20240912153113_A01_bg.jpg"
-    # frame_image_path = "./testset/RA_cam1/processed/warped_20240912153113_A01_0.jpg"
-
-    # main(bg_image_path, frame_image_path)
-
-    home_dir = "./testset/20250122_145719/cam2"
+    home_dir = "./testset/20250116_091103/cam1_4set_warped"
     # 폴더에서 파일 이름 읽기
     all_files = os.listdir(home_dir)
 

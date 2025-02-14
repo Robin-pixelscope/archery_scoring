@@ -1,10 +1,9 @@
 import cv2
 import numpy as np
 from scipy.optimize import minimize_scalar
-from sklearn.cluster import DBSCAN
 
 
-class DETECT_TARGET:
+class DETECT_TARGET_TEST:
     def __init__(
         self,
         frame_image_path,
@@ -164,9 +163,9 @@ class DETECT_TARGET:
                 (arrow[0] - center[0]) ** 2 + (arrow[1] - center[1]) ** 2
             )
             distances.append(distance)
-            # print(
-            #     f"중심 ({center[0]}, {center[1]}) -> 화살 ({arrow[0]}, {arrow[1]}): 거리 {distance:.2f}"
-            # )
+            print(
+                f"중심 ({center[0]}, {center[1]}) -> 화살 ({arrow[0]}, {arrow[1]}): 거리 {distance:.2f}"
+            )
         return distance
 
     def assign_score(self, radius, contours_of_points):
@@ -403,3 +402,194 @@ class DETECT_TARGET:
         # cv2.destroyAllWindows()
 
         return (cX_0, cY_0), score, score_coutour_list
+
+    # --------------------------------------------------------------------------------
+    # def process_target_detection(self):
+    #     """
+    #     Processes the color-based segmentation of the target.
+
+    #     Returns:
+    #         center: The coordinates of the target center.
+    #         score: The score of the segmentation.
+    #     """
+    #     frame = cv2.imread(self.image_path, cv2.IMREAD_COLOR)
+    #     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    #     output = frame.copy()
+    #     image_center = (output.shape[1] // 2, output.shape[0] // 2)
+    #     color_ranges = {
+    #         "Yellow": ([20, 100, 100], [30, 255, 255]),
+    #         "Red": ([0, 50, 50], [10, 255, 255], [170, 50, 50], [180, 255, 255]),
+    #         "Blue": ([100, 110, 70], [140, 255, 255]),
+    #         "Black": ([0, 0, 0], [180, 255, 80]),
+    #     }
+    #     height, width = frame.shape[:2]
+    #     # 크롭 영역의 좌표 계산 (마진 적용)
+    #     x1 = max(self.shaft_x - 500, 0)  # 왼쪽 경계
+    #     y1 = max(self.shaft_y - 500, 0)  # 위쪽 경계
+    #     x2 = min(self.shaft_x + 500, width)  # 오른쪽 경계
+    #     y2 = min(self.shaft_y + 500, height)  # 아래쪽 경계
+    #     # 이미지 크롭
+    #     roi = hsv[y1:y2, x1:x2]
+
+    #     ellipses = []
+    #     colormask_polygons = []
+    #     for color_name, ranges in color_ranges.items():
+    #         if color_name == "Red":
+    #             # 빨간색은 두 범위를 처리
+    #             mask1 = cv2.inRange(roi, np.array(ranges[0]), np.array(ranges[1]))
+    #             mask2 = cv2.inRange(roi, np.array(ranges[2]), np.array(ranges[3]))
+    #             mask = cv2.bitwise_or(mask1, mask2)
+    #         else:
+    #             # 다른 색상은 단일 범위
+    #             mask = cv2.inRange(roi, np.array(ranges[0]), np.array(ranges[1]))
+
+    #         # 모폴로지 연산으로 노이즈 제거
+    #         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (20, 20))
+    #         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    #         # cv2.imshow(f"{color_name} Mask", mask)  # for debugging purpose
+
+    #         # 컨투어 검출
+    #         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    #         # cv2.drawContours(output, contours, -1, (0, 255, 0), 2)
+
+    #         # 원형성 임계값 및 최소 면적 설정
+    #         circularity_threshold = 0.7
+    #         min_area = 500  # 최소 크기 제한
+
+    #         # 원형 컨투어만 필터링하여 그리기
+    #         for cnt_0 in contours:
+    #             cnt_0 += [x1, y1]
+    #             area_colormask = cv2.contourArea(cnt_0)
+    #             perimeter = cv2.arcLength(cnt_0, True)
+    #             if perimeter == 0:
+    #                 continue  # 분모가 0이 되는 경우 방지
+    #             circularity = 4 * np.pi * (area_colormask / (perimeter**2))
+    #             if circularity > circularity_threshold and area_colormask > min_area:
+    #                 # cv2.polylines(output, [cnt_0], True, (0, 255, 0), 2)
+    #                 colormask_polygons.append(cnt_0)
+    #         # ------------------------------------------------------------------------
+
+    #     gray_image = cv2.imread(self.image_path, cv2.IMREAD_GRAYSCALE)
+
+    #     # 블러링으로 노이즈 제거
+    #     gray_blurred = cv2.GaussianBlur(gray_image, (3, 3), 1.5)
+    #     edges = cv2.Canny(gray_blurred, 200, 80)
+
+    #     # 모폴로지 연산으로 끊어진 엣지 연결
+    #     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10, 10))
+
+    #     # # 블러링으로 노이즈 제거
+    #     # gray_blurred = cv2.GaussianBlur(gray_image, (3, 3), 1)
+    #     # edges = cv2.Canny(gray_blurred, 200, 80)
+
+    #     # # 모폴로지 연산으로 끊어진 엣지 연결
+    #     # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    #     dilated = cv2.dilate(edges, kernel, iterations=1)
+    #     morphed_edges = cv2.erode(dilated, kernel, iterations=1)
+    #     # cv2.imshow("Morped_Edges", morphed_edges)  # for debugging purpose
+
+    #     # cv2.imshow("Edges", edges)  # for debugging purpose
+    #     # cv2.imshow("gray", gray_blurred)
+    #     # cv2.imshow("out,", output)
+    #     # cv2.waitKey()
+    #     # cv2.destroyAllWindows()
+
+    #     # 각 폴리곤의 면적 계산 (cv2.contourArea 사용)
+    #     colormask_polygon_area = [cv2.contourArea(poly) for poly in colormask_polygons]
+
+    #     # 가장 작은 면적과 가장 큰 면적의 인덱스 찾기
+    #     min_idx = np.argmin(colormask_polygon_area)
+    #     max_idx = np.argmax(colormask_polygon_area)
+
+    #     # # 가장 작은 면적과 가장 큰 면적의 폴리곤을 초록색으로 그리기
+    #     # cv2.polylines(output, [colormask_polygons[min_idx]], True, (0, 255, 0), 2)
+    #     # cv2.polylines(output, [colormask_polygons[max_idx]], True, (0, 255, 0), 2)
+
+    #     # approxPolyDP로 Contour 근사
+    #     # epsilon = arcLength의 일정 비율. 값이 작을수록 원래 윤곽과 가깝게, 클수록 단순화.
+    #     # epsilon = 0.001 * cv2.arcLength(colormask_polygons[min_idx], True)
+    #     # approx = cv2.approxPolyDP(colormask_polygons[min_idx], epsilon, True)
+    #     # cv2.drawContours(output, [approx], -1, (0, 255, 0), 2)  # 근사 컨투어(초록)
+
+    #     # 컬러마스크로 검출한 9점, 7점원을 이용해서 10점원, 8점원, 6점원을 비례계산
+    #     seven_pt_ellipse = cv2.fitEllipse(colormask_polygons[max_idx])
+    #     six_pt_ellipse = (
+    #         (seven_pt_ellipse[0][0], seven_pt_ellipse[0][1]),
+    #         (seven_pt_ellipse[1][0] * 1.25, seven_pt_ellipse[1][1] * 1.25),
+    #         seven_pt_ellipse[2],
+    #     )
+    #     eight_pt_ellipse = (
+    #         (seven_pt_ellipse[0][0], seven_pt_ellipse[0][1]),
+    #         (seven_pt_ellipse[1][0] * 0.75, seven_pt_ellipse[1][1] * 0.75),
+    #         seven_pt_ellipse[2],
+    #     )
+    #     nine_pt_ellipse = cv2.fitEllipse(colormask_polygons[min_idx])
+    #     ten_pt_ellipse = (
+    #         (nine_pt_ellipse[0][0], nine_pt_ellipse[0][1]),
+    #         (nine_pt_ellipse[1][0] / 2, nine_pt_ellipse[1][1] / 2),
+    #         nine_pt_ellipse[2],
+    #     )
+
+    #     # cv2.ellipse(output, ten_pt_ellipse, (0, 255, 0), 2)  # 10점원
+    #     # cv2.ellipse(output, eight_pt_ellipse, (0, 255, 0), 2)  # 8점원
+    #     # cv2.ellipse(output, six_pt_ellipse, (0, 255, 0), 2)  # 6점원
+
+    #     # 과녁지 중심점 계산
+    #     Moment_0riginal = cv2.moments(colormask_polygons[max_idx])
+    #     if Moment_0riginal["m00"] != 0:
+    #         cX_0riginal = int(Moment_0riginal["m10"] / Moment_0riginal["m00"])
+    #         cY_0riginal = int(Moment_0riginal["m01"] / Moment_0riginal["m00"])
+    #     #     print(f"Centroid: ({cX_0}, {cY_0})")
+    #     # exit()
+
+    #     # 컨투어 검출
+    #     contours, _ = cv2.findContours(
+    #         morphed_edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE
+    #     )
+    #     # 원형성 임계값 및 최소 면적 설정
+    #     circularity_threshold = 0.7
+    #     min_area = 500  # 최소 크기 제한
+
+    #     polygons = []
+    #     # 원형 컨투어만 필터링하여 그리기
+    #     for cnt in contours:
+    #         area = cv2.contourArea(cnt)
+    #         perimeter = cv2.arcLength(cnt, True)
+    #         Moment_contour = cv2.moments(cnt)
+    #         if Moment_contour["m00"] != 0:
+    #             cX = int(Moment_contour["m10"] / Moment_contour["m00"])
+    #             cY = int(Moment_contour["m01"] / Moment_contour["m00"])
+    #             # print(f"Centroid: ({cX}, {cY})")
+    #         if perimeter == 0:
+    #             continue  # 분모가 0이 되는 경우 방지
+    #         circularity = 4 * np.pi * (area / (perimeter**2))
+    #         if circularity > circularity_threshold and area > min_area:
+    #             distance = np.sqrt((cX_0riginal - cX) ** 2 + (cY_0riginal - cY) ** 2)
+    #             if distance <= 50:
+    #                 if area < min(colormask_polygon_area) - 5000:
+    #                     # cv2.polylines(output, [cnt], True, (255, 0, 0), 2)
+    #                     polygons.append(cnt)
+    #                 elif (
+    #                     max(colormask_polygon_area) - 5000
+    #                     > area
+    #                     > min(colormask_polygon_area) + 5000
+    #                 ):
+    #                     # cv2.polylines(output, [cnt], True, (255, 0, 0), 2)
+    #                     polygons.append(cnt)
+    #                 elif area > max(colormask_polygon_area) + 5000:
+    #                     # cv2.polylines(output, [cnt], True, (255, 0, 0), 2)
+    #                     polygons.append(cnt)
+    #                 # else:
+    #                 #     print(area)
+    #                 #     print("---------------------------------------")
+
+    #     merged_polygons = self.merge_polygons_filter_outer(
+    #         polygons, radius_threshold=20, center_distance_threshold=20
+    #     )
+    #     # for i in merged_polygons:
+    #     # cv2.polylines(output, [i], True, (255, 0, 0), 2)
+
+    #     # cv2.imshow("out,", output)
+    #     # cv2.waitKey()
+    #     # cv2.destroyAllWindows()
+    #     # return center, score, merged_ellipses

@@ -110,7 +110,7 @@ def main(bg_image_path, frame_image_path):
     cv2.waitKey(0)
     cv2.destroyAllWindows()
 
-    # # Test -----------------------------------------------------------------------
+    # # Testing -----------------------------------------------------------------------
     # target_detector = DETECT_TARGET_TEST(
     #     bg_image_path,
     #     x,

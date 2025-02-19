@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
-from scipy.optimize import minimize_scalar
-from sklearn.cluster import DBSCAN
+from collections import deque
+from shapely.geometry import Point, LineString, Polygon
 
 
 class DETECT_TARGET:
@@ -106,19 +106,20 @@ class DETECT_TARGET:
             cY = int(moments["m01"] / moments["m00"])
             circularity = 4 * np.pi * (area / (perimeter**2))
             if circularity > circularity_threshold and area > min_area:
-                # 원본 색영역 중심과의 거리 계산
-                distance = np.sqrt((cX_0 - cX) ** 2 + (cY_0 - cY) ** 2)
-                if distance <= 50:
-                    if area < min(ref_areas) - 5000:
-                        polygons.append(cnt)
-                    elif min(ref_areas) + 5000 < area < max(ref_areas) - 5000:
-                        polygons.append(cnt)
-                    elif area > max(ref_areas) + 5000:
-                        polygons.append(cnt)
+                polygons.append(cnt)
+                # # 원본 색영역 중심과의 거리 계산
+                # distance = np.sqrt((cX_0 - cX) ** 2 + (cY_0 - cY) ** 2)
+                # if distance <= 50:
+                #     if area < min(ref_areas) - 5000:
+                #         polygons.append(cnt)
+                #     elif min(ref_areas) + 5000 < area < max(ref_areas) - 5000:
+                #         polygons.append(cnt)
+                #     elif area > max(ref_areas) + 5000:
+                #         polygons.append(cnt)
 
         # 추가로 병합 및 필터링 (merge_polygons_filter_outer 함수가 이미 정의되어 있다고 가정)
         merged_polygons = self.merge_polygons_filter_outer(
-            polygons, radius_threshold=100, center_distance_threshold=20
+            polygons, radius_threshold=50, center_distance_threshold=30
         )
         return merged_polygons
 
@@ -147,154 +148,249 @@ class DETECT_TARGET:
         polygon = cnt_scaled_float.reshape(-1, 1, 2).astype(np.int32)
         return polygon
 
-    def calculate_distances(self, center, arrow_positions):
+    def extend_line(self, center, arrow, factor=1000):
         """
-        중심 좌표와 화살 좌표 간의 거리를 계산하는 함수.
-
-        Parameters:
-            center (tuple): 중심 좌표 (x, y)
-            arrow_positions (list of tuples): 검출된 화살 좌표 리스트 [(x1, y1), (x2, y2), ...]
-
-        Returns:
-            distances (list of floats): 중심 좌표와 화살 좌표 간의 거리 리스트
+        중심점에서 화살 좌표 방향으로 factor배 만큼 연장한 직선을 반환합니다.
+        center와 arrow를 float형 1차원 배열로 변환하여 (x, y) 튜플 형태로 만듭니다.
         """
-        distances = []
-        for arrow in arrow_positions:
-            distance = np.sqrt(
-                (arrow[0] - center[0]) ** 2 + (arrow[1] - center[1]) ** 2
-            )
-            distances.append(distance)
-            # print(
-            #     f"중심 ({center[0]}, {center[1]}) -> 화살 ({arrow[0]}, {arrow[1]}): 거리 {distance:.2f}"
-            # )
-        return distance
+        center = np.array(center, dtype=float).flatten()
+        arrow = np.array(arrow, dtype=float).flatten()
+        direction = arrow - center
+        norm = np.linalg.norm(direction)
+        if norm == 0:
+            raise ValueError("중심점과 화살 좌표가 동일합니다.")
+        direction = direction / norm
+        far_point = center + direction * factor
+        return LineString([tuple(center), tuple(far_point)])
 
-    def assign_score(self, radius, contours_of_points):
+    def get_intersection_point(self, polygon, line, center, arrow):
         """
-        점수별 컨투어(폴리곤)의 면적과,
-        화살 좌표의 거리를 반지름으로 하는 원의 면적을 비교하여 점수를 할당하는 함수.
-
-        Parameters:
-            radius (float): 중심 좌표와 화살 좌표 간의 거리(반지름)
-            contours_of_points (list of ndarray): 점수별 컨투어(폴리곤) 목록
-                                                (예: findContours로 얻은 각 점수 영역)
-
-        Returns:
-            score (int or None): 최종 점수 (없으면 None)
+        주어진 폴리곤의 경계와 line의 교차점 중, 중심점에서 화살 방향과 일치하는
+        교차점을 선택하여 반환합니다.
         """
-        # 화살이 만드는 '원'의 면적 (π * r^2)
-        area_of_shaft_circle = np.pi * (radius**2)
-
-        larger_contours = []  # 화살 원보다 면적이 더 큰 컨투어 목록
-        for idx, contour in enumerate(contours_of_points):
-            contour_area = cv2.contourArea(contour)
-
-            # 컨투어 면적이 화살 원 면적보다 큰 경우만 추가
-            if contour_area > area_of_shaft_circle:
-                larger_contours.append((idx, contour, contour_area))
-
-        # 화살 원보다 큰 컨투어가 전혀 없으면 점수 계산 불가 → None
-        if not larger_contours:
+        inter = line.intersection(polygon.boundary)
+        if inter.is_empty:
             return None
 
-        # '화살 원 면적보다 크지만, 그 중 가장 작은 면적'의 컨투어 선택
-        smallest_larger_contour = min(larger_contours, key=lambda x: x[2])
-        idx = smallest_larger_contour[0]
+        if inter.geom_type == "Point":
+            points = [inter]
+        elif inter.geom_type == "MultiPoint":
+            points = list(inter.geoms)
+        else:
+            points = [geom for geom in inter.geoms if geom.geom_type == "Point"]
 
-        # 0~9번 범위 안에서만 점수를 10 - idx로 계산 (예시)
-        if 0 <= idx <= 9:
-            score = 10 - idx
+        center_np = np.array(center, dtype=float).flatten()
+        arrow_np = np.array(arrow, dtype=float).flatten()
+        direction = arrow_np - center_np
+        direction = direction / np.linalg.norm(direction)
+
+        valid_points = []
+        for pt in points:
+            vec = np.array([pt.x, pt.y], dtype=float) - center_np
+            if np.dot(vec, direction) > 0:
+                valid_points.append(pt)
+        if not valid_points:
+            return None
+
+        arrow_t = np.dot(arrow_np - center_np, direction)
+        best_point = None
+        best_diff = float("inf")
+        for pt in valid_points:
+            pt_t = np.dot(np.array([pt.x, pt.y], dtype=float) - center_np, direction)
+            diff = abs(arrow_t - pt_t)
+            if diff < best_diff:
+                best_diff = diff
+                best_point = pt
+        return best_point
+
+    def assign_score(self, center, arrow, contours_of_points):
+        """
+        중심 좌표와 화살 좌표, 그리고 점수별 컨투어(폴리곤)를 이용하여
+        화살의 위치에 따른 세분화된 점수를 선형 보간 방식으로 할당하는 함수.
+
+        Parameters:
+            center (tuple): (cX_0, cY_0) 중심 좌표
+            arrow (tuple): 화살 좌표 (shaft position)
+            contours_of_points (list of ndarray): 점수별 컨투어(폴리곤) 목록
+                                                (예: cv2.findContours 결과)
+
+        Returns:
+            score (float or None): 최종 할당 점수 (교차점 계산이 안되면 fallback으로 면적 기반 계산)
+        """
+        center_np = np.array(center, dtype=float).flatten()
+        arrow_np = np.array(arrow, dtype=float).flatten()
+        radius = np.linalg.norm(arrow_np - center_np)
+
+        # 중심-화살 직선 연장
+        line = self.extend_line(center, arrow)
+
+        # 각 컨투어를 shapely Polygon으로 변환하고,
+        # 중심-화살 직선과의 교차점을 구하여 중심으로부터의 거리를 계산
+        intersections = []
+        for idx, contour in enumerate(contours_of_points):
+            poly_pts = np.array(contour, dtype=float)
+            if poly_pts.ndim == 3:
+                poly_pts = poly_pts.reshape(-1, 2)
+            polygon = Polygon(poly_pts)
+            inter_pt = self.get_intersection_point(polygon, line, center, arrow)
+            if inter_pt is not None:
+                d = np.linalg.norm(
+                    np.array([inter_pt.x, inter_pt.y], dtype=float) - center_np
+                )
+                intersections.append((idx, d))
+
+        # 교차점을 찾지 못하면 기존 면적 기반 방식으로 fallback 처리
+        if not intersections:
+            area_of_shaft_circle = np.pi * (radius**2)
+            larger_contours = []
+            for idx, contour in enumerate(contours_of_points):
+                contour_area = cv2.contourArea(contour)
+                if contour_area > area_of_shaft_circle:
+                    larger_contours.append((idx, contour, contour_area))
+            if not larger_contours:
+                return None
+            smallest_larger_contour = min(larger_contours, key=lambda x: x[2])
+            idx = smallest_larger_contour[0]
+            if 0 <= idx <= 9:
+                score = 10 - idx
+                print(f"점수: {score}점")
+                return score
+            return None
+
+        # 중심에서의 교차점 거리를 기준으로 오름차순 정렬
+        intersections.sort(key=lambda x: x[1])
+
+        # 화살의 거리가 가장 안쪽 경계보다 작으면 최고점 10점 할당
+        if radius <= intersections[0][1]:
+            score = 10.0
             print(f"점수: {score}점")
             return score
 
-        # 이외에는 None 처리 (필요 시 로직 수정 가능)
-        return None
+        # 인접한 두 경계 사이에 화살이 위치한 경우 선형 보간으로 점수 산출
+        for i in range(len(intersections) - 1):
+            d_inner = intersections[i][1]
+            d_outer = intersections[i + 1][1]
+            if d_inner < radius <= d_outer:
+                s_inner = 10 - i  # 내부 경계에 해당하는 점수 (예: 10점, 9점, …)
+                s_outer = 10 - (i + 1)  # 외부 경계에 해당하는 점수
+                fraction = (radius - d_inner) / (d_outer - d_inner)
+                score = s_inner - fraction * (s_inner - s_outer)
+                print(f"점수: {score:.2f}점")
+                return score
+
+        # 만약 radius가 가장 바깥쪽 경계보다 멀면 가장 낮은 점수 할당
+        last_score = 10 - (len(intersections) - 1)
+        print(f"점수: {last_score}점")
+        return last_score
 
     def merge_polygons_filter_outer(
         self, polygons, radius_threshold=5, center_distance_threshold=10
     ):
         """
-        입력된 원 모양의 폴리곤(컨투어)들 중에서,
-        radius_threshold와 distance_threshold 기준으로 가까운 폴리곤들을 그룹화한 후,
-        각 그룹에서 반지름(최소 외접 원의 반지름)이 가장 작은, 즉 안쪽에 위치한 폴리곤을 그대로 선택합니다.
-
-        매개변수:
-          polygons: 원 모양 폴리곤 리스트.
-                    각 요소는 다음 중 하나의 형태로 주어질 수 있음:
-                      - ((cx, cy), radius)
-                      - (cx, cy, radius)
-                      - 컨투어(점들의 리스트 또는 numpy 배열)
-          radius_threshold: 반지름 차이가 이 값 이하이면 비슷한 크기로 판단
-          center_distance_threshold: 중심 간의 거리가 이 값 이하이면 가까운 것으로 판단
-
-        반환값:
-          merged_polygons: 필터링된(안쪽) 폴리곤들의 리스트 (원본 폴리곤 그대로)
+        1) 입력된 폴리곤(혹은 원 파라미터)을 (original_polygon, (cx,cy), r) 형태로 정규화
+        2) 각 폴리곤 간 center_distance_threshold, radius_threshold 기준을 만족하면 '인접'으로 간주
+        3) BFS/DFS를 이용해 인접한 폴리곤들을 클러스터로 묶음
+        4) 각 클러스터 내에서 평균 반지름에서 50 이하 차이나는 폴리곤들 중
+        '가장 안쪽(반지름이 작은)' 폴리곤만 최종 결과에 추가
         """
-        merged_polygons = []
-        used = [False] * len(polygons)
-        norm_polys = []  # 각 폴리곤을 (original_polygon, (cx,cy), radius) 형태로 저장
-
+        # ------------------------------------------------------------------
+        # 1) 폴리곤 정규화: (original_polygon, (cx, cy), radius) 형태로 변환
+        # ------------------------------------------------------------------
+        norm_polys = []  # (original, center, radius) 형태로 저장
         for poly in polygons:
-            # numpy 배열이면 리스트로 변환
+            # numpy 배열이면 list로
             if isinstance(poly, np.ndarray):
                 poly = poly.tolist()
+
+            # (cx, cy, r) 형태인지, 혹은 컨투어인지 구분
             if isinstance(poly, (list, tuple)):
-                # 만약 (cx, cy, radius) 형태인 경우
                 if len(poly) == 3 and isinstance(poly[0], (int, float)):
-                    center = (poly[0], poly[1])
-                    radius = poly[2]
-                    # 원 모양의 다각형이 아니라면, 원 모양의 컨투어를 생성하지 않고
-                    # 원래 정보만 저장 (추후에 새로 그리지 않고 필터링할 수 있음)
-                    original = None  # 원본 폴리곤이 없으므로 나중에 처리할 수 있음.
-                    # 여기서는 원본이 없으면, 원 모양의 다각형(컨투어)로 대체할 수 있습니다.
+                    cx, cy, r = poly
+                    # 원본 컨투어가 없으니 대체 컨투어 생성
                     theta = np.linspace(0, 2 * np.pi, 100, endpoint=False)
                     original = np.array(
-                        [
-                            [
-                                center[0] + radius * np.cos(t),
-                                center[1] + radius * np.sin(t),
-                            ]
-                            for t in theta
-                        ],
+                        [[cx + r * np.cos(t), cy + r * np.sin(t)] for t in theta],
                         dtype=np.int32,
                     )
                 else:
-                    # 컨투어(점들의 리스트)로 간주
-                    cnt = np.array(poly)
-                    # cv2.findContours에서 나온 형식일 수 있으므로 (N,1,2) -> (N,2)
+                    # 다각형(컨투어) -> minEnclosingCircle 로 (cx,cy,r) 추출
+                    cnt = np.array(poly, dtype=np.int32)
                     if cnt.ndim == 3:
                         cnt = cnt.reshape(-1, 2)
-                    (center, radius) = cv2.minEnclosingCircle(cnt)
-                    original = np.array(poly, dtype=np.int32)  # 원본 폴리곤 그대로 사용
-                norm_polys.append((original, (center[0], center[1]), radius))
+                    (cx, cy), r = cv2.minEnclosingCircle(cnt)
+                    original = cnt
             else:
-                raise ValueError("Polygon is not a tuple, list, or numpy array")
+                raise ValueError(
+                    "Polygon must be tuple/list/ndarray of points or (cx,cy,r)"
+                )
 
-        # 클러스터링: 각 폴리곤(원으로 표현된 정보)들끼리 가까우면 그룹화
-        for i, (orig_i, center_i, radius_i) in enumerate(norm_polys):
-            if used[i]:
+            norm_polys.append((original, (cx, cy), r))
+
+        # ------------------------------------------------------------------
+        # 2) 각 폴리곤 사이의 '인접성'을 판별해 그래프(인접 리스트) 구성
+        # ------------------------------------------------------------------
+        n = len(norm_polys)
+        adjacency_list = [[] for _ in range(n)]
+
+        for i in range(n):
+            _, (cx_i, cy_i), r_i = norm_polys[i]
+            for j in range(i + 1, n):
+                _, (cx_j, cy_j), r_j = norm_polys[j]
+                dist = np.sqrt((cx_i - cx_j) ** 2 + (cy_i - cy_j) ** 2)
+                if (
+                    dist <= center_distance_threshold
+                    and abs(r_i - r_j) <= radius_threshold
+                ):
+                    adjacency_list[i].append(j)
+                    adjacency_list[j].append(i)
+
+        # ------------------------------------------------------------------
+        # 3) BFS/DFS 로 '연결된(인접한)' 폴리곤들을 하나의 클러스터로 묶기
+        # ------------------------------------------------------------------
+        visited = [False] * n
+        clusters = []
+        for i in range(n):
+            if not visited[i]:
+                queue = deque([i])
+                visited[i] = True
+                cluster_indices = []
+                while queue:
+                    idx = queue.popleft()
+                    cluster_indices.append(idx)
+                    # idx와 인접한 노드 탐색
+                    for nbr in adjacency_list[idx]:
+                        if not visited[nbr]:
+                            visited[nbr] = True
+                            queue.append(nbr)
+                clusters.append(cluster_indices)
+
+        # ------------------------------------------------------------------
+        # 4) 각 클러스터 내에서
+        #    - 평균 반지름에서 ±50 이하인 폴리곤들만 후보
+        #    - 후보 중 반지름이 가장 작은 폴리곤을 최종 출력 리스트에 추가
+        # ------------------------------------------------------------------
+        merged_polygons = []
+        for cluster in clusters:
+            if not cluster:
                 continue
-            current_cluster = [(i, center_i, radius_i)]
-            used[i] = True
-            for j, (orig_j, center_j, radius_j) in enumerate(norm_polys):
-                if i != j and not used[j]:
-                    dist = np.sqrt(
-                        (center_i[0] - center_j[0]) ** 2
-                        + (center_i[1] - center_j[1]) ** 2
-                    )
-                    if (
-                        abs(radius_i - radius_j) <= radius_threshold
-                        and dist <= center_distance_threshold
-                    ):
-                        current_cluster.append((j, center_j, radius_j))
-                        used[j] = True
+            radii = [norm_polys[idx][2] for idx in cluster]  # 반지름 목록
+            avg_r = sum(radii) / len(radii)
+            # print(f"평균반지름: {avg_r}")
 
-            # 그룹 내에서 반지름이 가장 작은(안쪽) 폴리곤 선택
-            best_index, best_center, best_radius = min(
-                current_cluster, key=lambda item: item[2]
-            )
-            best_original, _, _ = norm_polys[best_index]
-            merged_polygons.append(best_original)
+            # 평균 반지름과 50 이하 차이나는 폴리곤들만 후보
+            candidates = [
+                (idx, norm_polys[idx][2])
+                for idx in cluster
+                if abs(norm_polys[idx][2] - avg_r) <= radius_threshold
+            ]
+            if candidates:
+                # 반지름이 가장 작은(안쪽) 폴리곤 선택
+                best_idx, best_r = min(candidates, key=lambda x: x[1])
+                best_original, _, _ = norm_polys[best_idx]
+                merged_polygons.append(best_original)
+            # print(f"후보: {candidates} / 결과: {best_idx}")
+
+        # print(merged_polygons)
         return merged_polygons
 
     def process_target_detection(self):
@@ -338,9 +434,9 @@ class DETECT_TARGET:
         else:
             cX_0, cY_0 = None, None
 
-        # [디버깅] 가장 작은 면적과 가장 큰 면적의 폴리곤을 초록색으로 그리기
-        cv2.polylines(output, [colormask_polygons[min_idx]], True, (0, 255, 0), 2)
-        cv2.polylines(output, [colormask_polygons[max_idx]], True, (0, 255, 0), 2)
+        # # [디버깅] 가장 작은 면적과 가장 큰 면적의 폴리곤을 초록색으로 그리기
+        # cv2.polylines(output, [colormask_polygons[min_idx]], True, (0, 255, 0), 2)
+        # cv2.polylines(output, [colormask_polygons[max_idx]], True, (0, 255, 0), 2)
 
         # approxPolyDP로 Contour 근사 ------------------------------------------------
         # epsilon = arcLength의 일정 비율. 값이 작을수록 원래 윤곽과 가깝게, 클수록 단순화.
@@ -386,15 +482,16 @@ class DETECT_TARGET:
         polygons_with_area.sort(key=lambda x: x[0])
 
         # 정렬된 리스트에서 상위 6개만 추출
-        top_6 = polygons_with_area[:6]
+        top_6 = polygons_with_area[:5]
 
         # 최종 점수 영역 폴리곤들만 추출 (폴리곤만 꺼내서 새 리스트 구성)
         final_scoring_polygons = [item[1] for item in top_6]
         score_coutour_list.extend(final_scoring_polygons)
+        # print(len(final_scoring_polygons[0]))
+
         shaft_positions = [(self.shaft_x, self.shaft_y)]
-        distance = self.calculate_distances((cX_0, cY_0), shaft_positions)
-        score = self.assign_score(distance, score_coutour_list)
-        # print(len(scoring_polygons))
+        score = self.assign_score((cX_0, cY_0), shaft_positions, score_coutour_list)
+        # print(f"점수 원 갯수: {len(score_coutour_list)}")
         # # [디버깅] 및 시각화
         # for i in score_coutour_list:
         #     cv2.polylines(output, [i], True, (255, 0, 0), 2)

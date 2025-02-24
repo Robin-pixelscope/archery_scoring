@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Tuple, List
 from collections import defaultdict
-from detect_shaft import DETECT_SHAFT
+from detect_shaft_cv_legacy import DETECT_SHAFT
 from detect_target import DETECT_TARGET
 from detect_target_test import DETECT_TARGET_TEST
 from visualize import TargetVisualizer
@@ -75,32 +75,42 @@ class CVParams:
     # shaft_line_maxdistance: int = 50
 
 
-def main(bg_image_path, frame_image_path):
+def main(image_path):
     cv_params = CVParams()
 
     # shaft_detector = DETECT_SHAFT(bg_image_path, frame_image_path, cv_params)
     # x, y = shaft_detector.main()
-    x, y = 938, 905
+    # x, y = 938, 905
+    # x, y = 1054, 1081
+    shaft_coords = [[862, 1068], [873, 1055], [870, 1186], [961, 1051], [1054, 1081]]
+    hits = []
 
-    target_detector = DETECT_TARGET(
-        bg_image_path,
-        x,
-        y,
-        min_area=5000,
-        max_area=1000000,
-        center_tolerance=300,
-        max_ellipses=15,
-    )
-    start_time = time.time()
-    center, score, color_ellipses = target_detector.process_target_detection()
+    for shaft_coord in shaft_coords:
+        target_detector = DETECT_TARGET(
+            image_path,
+            shaft_coord[0],
+            shaft_coord[1],
+            min_area=5000,
+            max_area=1000000,
+            center_tolerance=300,
+            max_ellipses=15,
+        )
+        # start_time = time.time()
+        center, score, contour_list = target_detector.process_target_detection()
+        hits.append(
+            {
+                "point": (
+                    shaft_coord[0],
+                    shaft_coord[1],
+                ),
+                "score": score,
+            }
+        )
     # Example usage:
-    img = cv2.imread(frame_image_path)
+    img = cv2.imread(image_path)
 
     # Create the visualizer
     visualizer = TargetVisualizer(center[0], center[1])
-
-    # Example hit points with scores
-    hits = [{"point": (x, y), "score": score}]
 
     # Draw the visualization
     output_img = visualizer.visualize(img, hits)
@@ -130,10 +140,11 @@ if __name__ == "__main__":
     # 폴더에서 파일 이름 읽기
     all_files = os.listdir(home_dir)
 
-    pair_list = select_input_images(all_files)
+    # pair_list = select_input_images(all_files)
 
-    for i in pair_list:
-        bg_image_path = os.path.join(home_dir, i[0])
-        frame_image_path = os.path.join(home_dir, i[1])
+    for i in all_files:
+        image_path = os.path.join(home_dir, i)
+        print(image_path)
+        # frame_image_path = os.path.join(home_dir, i[1])
         # print(f"Processing: {bg_image_path}, {frame_image_path}")
-        main(bg_image_path, frame_image_path)
+        main(image_path)

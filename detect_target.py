@@ -56,12 +56,14 @@ class DETECT_TARGET:
             # 모폴로지 연산으로 노이즈 제거
             kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (20, 20))
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+            # cv2.imshow("mask", mask)
+            # cv2.waitKey()
 
             # 컨투어 검출
             contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
             for cnt in contours:
-                # ROI의 좌표를 원본 이미지 기준으로 보정
+                # # ROI의 좌표를 원본 이미지 기준으로 보정
                 cnt += [x_offset, y_offset]
                 area = cv2.contourArea(cnt)
                 perimeter = cv2.arcLength(cnt, True)
@@ -104,23 +106,39 @@ class DETECT_TARGET:
                 continue
             cX = int(moments["m10"] / moments["m00"])
             cY = int(moments["m01"] / moments["m00"])
-            circularity = 4 * np.pi * (area / (perimeter**2))
-            if circularity > circularity_threshold and area > min_area:
-                polygons.append(cnt)
-                # # 원본 색영역 중심과의 거리 계산
-                # distance = np.sqrt((cX_0 - cX) ** 2 + (cY_0 - cY) ** 2)
-                # if distance <= 50:
-                #     if area < min(ref_areas) - 5000:
-                #         polygons.append(cnt)
-                #     elif min(ref_areas) + 5000 < area < max(ref_areas) - 5000:
-                #         polygons.append(cnt)
-                #     elif area > max(ref_areas) + 5000:
-                #         polygons.append(cnt)
+            if abs(cX - cX_0) < 30 and abs(cY - cY_0) < 30:
+                circularity = 4 * np.pi * (area / (perimeter**2))
+                if circularity > circularity_threshold and area > min_area:
+                    polygons.append(cnt)
+                    # # 원본 색영역 중심과의 거리 계산
+                    # distance = np.sqrt((cX_0 - cX) ** 2 + (cY_0 - cY) ** 2)
+                    # if distance <= 50:
+                    #     if area < min(ref_areas) - 5000:
+                    #         polygons.append(cnt)
+                    #     elif min(ref_areas) + 5000 < area < max(ref_areas) - 5000:
+                    #         polygons.append(cnt)
+                    #     elif area > max(ref_areas) + 5000:
+                    #         polygons.append(cnt)
 
         # 추가로 병합 및 필터링 (merge_polygons_filter_outer 함수가 이미 정의되어 있다고 가정)
         merged_polygons = self.merge_polygons_filter_outer(
-            polygons, radius_threshold=50, center_distance_threshold=30
+            polygons, radius_threshold=80, center_distance_threshold=30
         )
+        # merged_polygons = self.filter_duplicates_by_iou(polygons, iou_threshold=0.85)
+        # merged_polygons = self.filter_duplicates_by_radius(
+        #     polygons, r_threshold=80, center_dist_threshold=30
+        # )
+        # merged_polygons = self.fill_and_merge_rings(
+        #     polygons, ring_count=10, ring_gap=95.0
+        # )
+        # merged_polygons = self.merge_polygons_filter_outer_1to1(
+        #     polygons,
+        #     gap_lower=85,
+        #     gap_upper=105,
+        #     expected_gap=95,
+        #     total_rings=10,
+        #     num_points=100,
+        # )
         return merged_polygons
 
     def calculate_middle_points_polygons(self, scale, polygons):
@@ -284,7 +302,7 @@ class DETECT_TARGET:
         return last_score
 
     def merge_polygons_filter_outer(
-        self, polygons, radius_threshold=5, center_distance_threshold=10
+        self, polygons, radius_threshold=50, center_distance_threshold=30
     ):
         """
         1) 입력된 폴리곤(혹은 원 파라미터)을 (original_polygon, (cx,cy), r) 형태로 정규화
@@ -381,7 +399,7 @@ class DETECT_TARGET:
             candidates = [
                 (idx, norm_polys[idx][2])
                 for idx in cluster
-                if abs(norm_polys[idx][2] - avg_r) <= radius_threshold
+                if abs(norm_polys[idx][2] - avg_r) <= 50
             ]
             if candidates:
                 # 반지름이 가장 작은(안쪽) 폴리곤 선택
@@ -410,15 +428,24 @@ class DETECT_TARGET:
         height, width = frame.shape[:2]
         score_coutour_list = []
 
+        # 이미지 중심 계산
+        center_x = width // 2
+        center_y = height // 2
+
         # 크롭 영역 계산 (마진 적용)
-        x1 = max(self.shaft_x - 500, 0)
-        y1 = max(self.shaft_y - 500, 0)
-        x2 = min(self.shaft_x + 500, width)
-        y2 = min(self.shaft_y + 500, height)
+        margin = 500
+        x1 = max(center_x - margin, 0)
+        y1 = max(center_y - margin, 0)
+        x2 = min(center_x + margin, width)
+        y2 = min(center_y + margin, height)
         roi = hsv[y1:y2, x1:x2]
 
         # 1. 색영역 마스크로 컨투어(폴리곤) 검출
         colormask_polygons = self.get_color_mask_polygons(roi, (x1, y1))
+        # for ma in colormask_polygons:
+        #     cv2.polylines(output, [ma], True, (0, 255, 0), 2)
+        # cv2.imshow("output", output)
+        # cv2.waitKey()
         if not colormask_polygons:
             return None, None
 
@@ -457,6 +484,7 @@ class DETECT_TARGET:
         # cv2.polylines(output, [ten_pt], True, (0, 255, 0), 2)  # 10점원
         # cv2.polylines(output, [eight_pt], True, (0, 255, 0), 2)  # 8점원
         # cv2.polylines(output, [six_pt], True, (0, 255, 0), 2)  # 6점원
+        # cv2.waitKey()
 
         # 2. 엣지 기반 컨투어에서 조건에 따른 점수영역 검출
         # 그레이스케일 이미지 및 엣지 검출
@@ -466,11 +494,19 @@ class DETECT_TARGET:
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (10, 10))
         dilated = cv2.dilate(edges, kernel, iterations=1)
         morphed_edges = cv2.erode(dilated, kernel, iterations=1)
+        # cv2.imshow("morphed_edges", morphed_edges)
 
         scoring_polygons = self.get_scoring_polygons(
             morphed_edges, (cX_0, cY_0), colormask_areas
         )
-        colormask_max_area = cv2.contourArea(seven_pt) + 5000
+        # for i in scoring_polygons:
+        #     contour = np.array(i, dtype=np.int32).reshape(-1, 2)
+        #     cv2.polylines(output, [contour], True, (255, 0, 0), 2)
+        # cv2.imshow("out,", output)
+        # cv2.waitKey()
+        # cv2.destroyAllWindows()
+        # print(len(scoring_polygons))
+        colormask_max_area = cv2.contourArea(seven_pt)  # + 5000
         # 각 폴리곤의 면적을 구하고 (면적, 폴리곤) 튜플로 묶기
         polygons_with_area = []
         for poly in scoring_polygons:
@@ -494,7 +530,7 @@ class DETECT_TARGET:
         # print(f"점수 원 갯수: {len(score_coutour_list)}")
         # # [디버깅] 및 시각화
         # for i in score_coutour_list:
-        #     cv2.polylines(output, [i], True, (255, 0, 0), 2)
+        #     cv2.polylines(output, [np.int32(i)], True, (255, 0, 0), 2)
         # cv2.imshow("out,", output)
         # cv2.waitKey()
         # cv2.destroyAllWindows()

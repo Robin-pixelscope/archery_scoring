@@ -296,6 +296,366 @@ class DETECT_TARGET_TEST:
             merged_polygons.append(best_original)
         return merged_polygons
 
+    def to_shapely_polygon(self, poly):
+        """
+        (cx, cy, r) 혹은 컨투어(점 리스트/배열)를
+        shapely.geometry.Polygon 객체로 변환하는 함수
+        """
+        if isinstance(poly, (tuple, list)):
+            # (cx, cy, r) 형태
+            if len(poly) == 3 and all(isinstance(v, (int, float)) for v in poly):
+                cx, cy, r = poly
+                # 원을 다각형으로 근사
+                theta = np.linspace(0, 2 * np.pi, 72)  # 72각형 근사
+                pts = [(cx + r * np.cos(t), cy + r * np.sin(t)) for t in theta]
+                return Polygon(pts)
+            else:
+                # 컨투어(점들의 리스트)
+                pts = np.array(poly, dtype=np.float32)
+                if pts.ndim == 3:
+                    pts = pts.reshape(-1, 2)
+                return Polygon(pts)
+        elif isinstance(poly, np.ndarray):
+            # Numpy array인 경우, 컨투어로 간주
+            pts = poly.astype(np.float32)
+            if pts.ndim == 3:
+                pts = pts.reshape(-1, 2)
+            return Polygon(pts)
+        else:
+            raise ValueError("Unsupported polygon format")
+
+    def iou_polygon(self, polyA, polyB):
+        """
+        두 shapely Polygon의 IoU(Intersection over Union) 계산
+        """
+        inter_area = polyA.intersection(polyB).area
+        union_area = polyA.union(polyB).area
+        if union_area == 0:
+            return 0
+        return inter_area / union_area
+
+    def filter_duplicates_by_iou(self, polygons, iou_threshold=0.8):
+        """
+        폴리곤 간 IoU(면적 교집합/합집합) 기반으로 중복 제거.
+        - IoU가 iou_threshold 이상이면 같은 폴리곤(중복)으로 간주.
+
+        Parameters:
+            polygons (list): 폴리곤 리스트. 각 폴리곤은
+                            - (cx, cy, r) 또는
+                            - 컨투어(점들의 리스트/배열) 형태
+            iou_threshold (float): IoU 임계값 (기본 0.8)
+
+        Returns:
+            merged (list): 중복이 제거된 폴리곤 목록
+        """
+        merged = []
+        for poly in polygons:
+            poly_shapely = self.to_shapely_polygon(poly)
+            is_duplicate = False
+
+            for i, m_poly in enumerate(merged):
+                m_shapely = self.to_shapely_polygon(m_poly)
+                iou_val = self.iou_polygon(poly_shapely, m_shapely)
+
+                # IoU가 임계값 이상이면 "중복"으로 간주
+                if iou_val >= iou_threshold:
+                    # 필요하다면, '더 작은 반지름'만 남기는 로직 등 커스터마이징 가능
+                    # 이 예시에서는 단순히 먼저 들어온 폴리곤 유지, 새로 들어온 것은 스킵
+                    is_duplicate = True
+                    break
+
+            if not is_duplicate:
+                merged.append(poly)
+
+        return merged
+
+    def extract_center_radius(self, poly):
+        """
+        폴리곤(컨투어) 혹은 (cx, cy, r) 정보를 입력받아
+        (cx, cy, r)를 반환하는 헬퍼 함수.
+        """
+        # 이미 (cx, cy, r) 형태라면 그대로 반환
+        if isinstance(poly, (tuple, list)):
+            if len(poly) == 3 and all(isinstance(v, (int, float)) for v in poly):
+                return (poly[0], poly[1], poly[2])
+
+        # 그렇지 않다면 컨투어(점들의 리스트/배열)로 가정
+        cnt = np.array(poly, dtype=np.float32)
+        if cnt.ndim == 3:
+            cnt = cnt.reshape(-1, 2)
+        (cx, cy), r = cv2.minEnclosingCircle(cnt)
+        return (cx, cy, r)
+
+    def filter_duplicates_by_radius(
+        self, polygons, r_threshold=80, center_dist_threshold=30
+    ):
+        """
+        중심 좌표와 반지름을 이용해 중복 폴리곤을 제거하는 함수.
+        - 이미 추가된 폴리곤과 (dist < dist_threshold) AND (|r - r'| < r_threshold)이면
+        같은 원으로 간주하여 중복 제거.
+        - '더 작은 반지름'을 유지하고 싶다면, 이미 등록된 폴리곤과 비교 시
+        원하는 로직으로 교체 가능.
+
+        Parameters:
+            polygons (list): 폴리곤 리스트. 각 폴리곤은
+                            - (cx, cy, r) 또는
+                            - 컨투어(점들의 리스트/배열) 형태
+            center_dist_threshold (float): 중심 좌표 간 거리 허용치
+            r_threshold (float): 반지름 차이 허용치
+
+        Returns:
+            merged (list): 중복이 제거된 폴리곤 목록
+        """
+        merged = []
+        for poly in polygons:
+            cx, cy, r = self.extract_center_radius(poly)
+            is_duplicate = False
+
+            for i, m_poly in enumerate(merged):
+                mx, my, mr = self.extract_center_radius(m_poly)
+
+                # 중심 거리
+                dist = np.sqrt((cx - mx) ** 2 + (cy - my) ** 2)
+                # 반지름 차
+                diff_r = abs(r - mr)
+
+                if dist < center_dist_threshold and diff_r < r_threshold:
+                    # 여기서 '더 작은 반지름'만 남기고 싶다면 아래와 같이 로직 변경 가능
+                    # 예) 현재 poly가 더 작으면 merged[i]를 교체
+                    if r < mr:
+                        merged[i] = poly
+                    is_duplicate = True
+                    break
+
+            if not is_duplicate:
+                merged.append(poly)
+
+        return merged
+
+    def to_center_radius(self, poly):
+        """
+        poly가 (cx, cy, r) 형태면 그대로 반환,
+        아니면 컨투어(점들의 리스트/배열)로 보고 (cx, cy, r)를 추출.
+        """
+        if isinstance(poly, (list, tuple)):
+            # (cx, cy, r) 형태 확인
+            if len(poly) == 3 and all(isinstance(v, (int, float)) for v in poly):
+                return (float(poly[0]), float(poly[1]), float(poly[2]))
+            else:
+                # 컨투어로 간주
+                cnt = np.array(poly, dtype=np.float32)
+                if cnt.ndim == 3:
+                    cnt = cnt.reshape(-1, 2)
+                (cx, cy), r = cv2.minEnclosingCircle(cnt)
+                return (cx, cy, r)
+        elif isinstance(poly, np.ndarray):
+            cnt = poly.astype(np.float32)
+            if cnt.ndim == 3:
+                cnt = cnt.reshape(-1, 2)
+            (cx, cy), r = cv2.minEnclosingCircle(cnt)
+            return (cx, cy, r)
+        else:
+            raise ValueError("Polygon format not supported")
+
+    def fill_and_merge_rings(self, polygons, ring_count=10, ring_gap=95.0):
+        """
+        1) 입력된 원(혹은 컨투어)들을 (cx, cy, r)로 정규화
+        2) 모든 원의 중심을 평균 내어 대표 중심으로 사용
+        3) 가장 작은 r을 '10점' 반지름으로 간주
+        4) ring_gap 간격으로 10점부터 1점까지 (총 10개) 반지름을 계산
+        5) 각 점수 반지름에 대해, 기존 폴리곤 중 가장 근접한 것(±some_threshold 이내)을 사용
+        - 여러 개가 근접하면 가장 작은 r 선택(=중복 제거)
+        - 근접한 게 없으면 새로 생성(누락분 보완)
+
+        Returns:
+            result (list): 길이 10의 리스트. (cx, cy, r) 형태로 [10점, 9점, ..., 1점] 순서
+        """
+        # 1) (cx, cy, r) 정규화
+        crs = [self.to_center_radius(poly) for poly in polygons]
+
+        if not crs:
+            # 아무것도 없다면, 임의의 기본값으로 생성할 수밖에 없음
+            # 예: (0,0) 중심, 10점 반지름=50으로 가정
+            result = []
+            base_r = 50.0
+            for i in range(ring_count):
+                r = base_r + i * ring_gap
+                result.append((0.0, 0.0, r))
+            return result
+
+        # 2) 중심점 평균
+        cx_vals = [c[0] for c in crs]
+        cy_vals = [c[1] for c in crs]
+        avg_cx = float(np.mean(cx_vals))
+        avg_cy = float(np.mean(cy_vals))
+
+        # 3) 가장 작은 r 찾기 -> 10점으로 간주
+        min_r = min(c[2] for c in crs)
+
+        # 4) ring_gap 간격으로 10개 반지름 계산
+        #    10점 = min_r, 9점 = min_r + ring_gap, ... 1점 = min_r + 9*ring_gap
+        desired_radii = []
+        for i in range(ring_count):
+            # i=0 -> 10점, i=1 -> 9점, ..., i=9 -> 1점
+            # r_10 + i*ring_gap
+            ring_r = min_r + i * ring_gap
+            desired_radii.append(ring_r)
+
+        # 5) 각 점수(각 desired_radii)에 대해 가장 가까운 폴리곤 찾기
+        #    - 근접 threshold를 ring_gap의 절반 정도로 잡는 등 임의로 설정 가능
+        #    - 여러 개가 근접하면 r이 가장 작은 것을 선택
+        #    - 근접한 것이 없으면 새로 생성
+        result = [None] * ring_count
+        threshold = ring_gap * 0.5  # 임의 설정 (필요시 조절)
+
+        used_indices = set()  # 이미 사용한 polygon 인덱스
+        for i, target_r in enumerate(desired_radii):
+            candidates = []
+            for idx, (cx, cy, r) in enumerate(crs):
+                if idx in used_indices:
+                    continue
+                # 반지름 차이
+                diff_r = abs(r - target_r)
+                if diff_r <= threshold:
+                    candidates.append((idx, (cx, cy, r)))
+
+            if candidates:
+                # 여러 후보 중 r이 작은 순으로 정렬
+                candidates.sort(key=lambda x: x[1][2])
+                chosen_idx, chosen_cr = candidates[0]
+                used_indices.add(chosen_idx)
+                result[i] = chosen_cr  # (cx, cy, r)
+            else:
+                # 근접한 것이 없으면 새로 생성(누락분 보완)
+                # 대표 중심(avg_cx, avg_cy)에 target_r 반지름
+                result[i] = (avg_cx, avg_cy, target_r)
+
+        # 결과 리스트는 [10점, 9점, ..., 1점] 순서
+        return result
+
+    def circle_to_polygon(self, cx, cy, r, num_points=100):
+        """
+        (cx, cy) 중심, 반지름 r인 원을 num_points각형으로 근사한 다각형(점 배열)로 반환.
+        """
+        angles = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
+        pts = np.stack((cx + r * np.cos(angles), cy + r * np.sin(angles)), axis=-1)
+        return pts.astype(np.float32)
+
+    def merge_polygons_filter_outer_1to1(
+        self,
+        polygons,
+        gap_lower=85,
+        gap_upper=105,
+        expected_gap=95,
+        total_rings=10,
+        num_points=100,
+    ):
+        """
+        [설명]
+        - 입력된 폴리곤(또는 (cx, cy, r) 파라미터)을 (original, (cx, cy), r) 형태로 정규화합니다.
+        - 정규화 후, 반지름 기준 오름차순으로 정렬한 뒤 가장 작은 원(내부 원, 10점)을 시작으로
+        순차적으로 1:1 비교하여, 두 원 간 반지름 차이가 85~105 픽셀 내에 있는 경우만 선택합니다.
+        - 만약 선택된 원의 개수가 total_rings(기본 10)개 미만이면, 가장 작은 원의 반지름을 기준으로
+        expected_gap(기본 95) 간격으로 누락된 원을 새로 생성하여 보완합니다.
+        - 최종 결과는 총 total_rings 개의 원 모양 다각형(각각 (num_points, 2) numpy 배열) 리스트로 반환됩니다.
+
+        Parameters:
+        polygons: 입력 폴리곤 리스트 (각 항목은 (cx, cy, r) 또는 컨투어(점들의 리스트/배열))
+        gap_lower: 두 원 간 최소 반지름 차 (픽셀)
+        gap_upper: 두 원 간 최대 반지름 차 (픽셀)
+        expected_gap: 이상적인 반지름 차 (픽셀; 누락 보완 시 사용)
+        total_rings: 최종으로 필요한 원의 개수 (예, 10개)
+        num_points: 원을 근사할 다각형의 점 개수
+
+        Returns:
+        merged_polygons: 총 total_rings 개의 원 모양 다각형 리스트
+                        (각각 np.array shape=(num_points, 2))
+        """
+        # 1. 폴리곤 정규화: (original, (cx, cy), r) 형태로 변환
+        norm_polys = []
+        for poly in polygons:
+            # numpy 배열이면 리스트로 변환
+            if isinstance(poly, np.ndarray):
+                poly = poly.tolist()
+            # (cx, cy, r) 형태인지, 아니면 컨투어인지 구분
+            if isinstance(poly, (list, tuple)):
+                if len(poly) == 3 and isinstance(poly[0], (int, float)):
+                    cx, cy, r = poly
+                    # 원형 다각형(컨투어)이 없으므로 임의로 원을 근사
+                    theta = np.linspace(0, 2 * np.pi, num_points, endpoint=False)
+                    original = np.array(
+                        [[cx + r * np.cos(t), cy + r * np.sin(t)] for t in theta],
+                        dtype=np.float32,
+                    )
+                else:
+                    # 컨투어로 간주: minEnclosingCircle로 (cx,cy,r) 추출
+                    cnt = np.array(poly, dtype=np.int32)
+                    if cnt.ndim == 3:
+                        cnt = cnt.reshape(-1, 2)
+                    (cx, cy), r = cv2.minEnclosingCircle(cnt)
+                    original = cnt.astype(np.float32)
+            else:
+                raise ValueError(
+                    "Polygon must be tuple/list/ndarray of points or (cx, cy, r)"
+                )
+            norm_polys.append((original, (cx, cy), r))
+
+        # 폴리곤이 하나도 없으면 기본값 생성 (중심 (0,0), base_r=50)
+        if not norm_polys:
+            base_center = (0.0, 0.0)
+            base_r = 50.0
+            merged_polygons = [
+                self.circle_to_polygon(
+                    base_center[0],
+                    base_center[1],
+                    base_r + i * expected_gap,
+                    num_points,
+                )
+                for i in range(total_rings)
+            ]
+            return merged_polygons
+
+        # 2. 반지름 기준 오름차순 정렬
+        norm_polys.sort(key=lambda x: x[2])
+
+        # 3. 가장 작은 원을 시작(10점 원)
+        base_original, base_center, base_r = norm_polys[0]
+        selected = [
+            norm_polys[0]
+        ]  # 선택된 원 리스트 (각 항목: (original, (cx, cy), r))
+        last_r = base_r
+
+        # 4. 나머지 폴리곤들을 순차적으로 1:1 비교 (반지름 차이가 gap_lower~gap_upper 이내인 경우만 선택)
+        for entry in norm_polys[1:]:
+            current_r = entry[2]
+            gap = current_r - last_r
+            if gap_lower <= gap <= gap_upper:
+                selected.append(entry)
+                last_r = current_r
+            if len(selected) >= total_rings:
+                break
+
+        # 5. 선택된 원의 개수가 total_rings 개 미만이면, 누락된 원은 기본 간격(expected_gap)을 이용해 생성
+        final_selected = selected[
+            :total_rings
+        ]  # 이미 선택된 것 중 최대 total_rings개 사용
+        count = len(final_selected)
+        if count < total_rings:
+            # (10점 원을 기준으로)
+            for i in range(count, total_rings):
+                new_r = base_r + i * expected_gap
+                final_selected.append((None, base_center, new_r))
+
+        # 6. 각 (cx,cy,r) 정보를 원 모양 다각형으로 변환
+        merged_polygons = []
+        for entry in final_selected:
+            center = entry[1]
+            r = entry[2]
+            poly = self.circle_to_polygon(center[0], center[1], r, num_points)
+            merged_polygons.append(poly)
+
+        return merged_polygons
+
     def process_target_detection(self):
         """
         기존 함수에서 색영역 마스크를 이용해 점수영역을 찾는 부분과,

@@ -56,7 +56,8 @@ class TargetVisualizer:
 
         for hit in hits:
             x, y = hit["point"]
-            score = str(hit["score"])
+            score_2f = f"{hit['score']:.2f}"
+            score = str(score_2f)
 
             # Draw the red circle
             cv2.circle(img, (x, y), circle_radius, circle_color, thickness)

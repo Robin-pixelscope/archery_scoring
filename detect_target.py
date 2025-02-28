@@ -23,17 +23,19 @@ class DETECT_TARGET:
         self.center_tolerance = center_tolerance
         self.max_ellipses = max_ellipses
 
-    def get_color_mask_polygons(self, roi, offset):
+    def get_color_mask_polygons(self, roi, center, offset):
         """
         주어진 ROI(HSV 이미지)에서 색영역 마스크를 적용해 원형 컨투어(폴리곤)를 검출합니다.
 
         Args:
             roi: 색공간(HSV)로 변환된 관심 영역.
+            center: (cX_0, cY_0) 형태의 원본 이미지 중심 좌표.
             offset: (x, y) 오프셋으로, roi가 원본 이미지 내에서 시작하는 좌표.
 
         Returns:
             colormask_polygons: 조건(원형성, 최소 면적)을 만족하는 컨투어 리스트.
         """
+        c_X, c_Y = center
         x_offset, y_offset = offset
         color_ranges = {
             "Yellow": ([20, 100, 100], [30, 255, 255]),
@@ -42,7 +44,7 @@ class DETECT_TARGET:
             "Black": ([0, 0, 0], [180, 255, 80]),
         }
         colormask_polygons = []
-        circularity_threshold = 0.7
+        circularity_threshold = 0.8
         min_area = 500
 
         for color_name, ranges in color_ranges.items():
@@ -69,10 +71,18 @@ class DETECT_TARGET:
                 perimeter = cv2.arcLength(cnt, True)
                 if perimeter == 0:
                     continue
+                moments = cv2.moments(cnt)
+                if moments["m00"] == 0:
+                    continue
+                cX = int(moments["m10"] / moments["m00"])
+                cY = int(moments["m01"] / moments["m00"])
+                distance = np.sqrt((c_X - cX) ** 2 + (c_Y - cY) ** 2)
                 circularity = 4 * np.pi * (area / (perimeter**2))
                 if circularity > circularity_threshold and area > min_area:
-                    colormask_polygons.append(cnt)
+                    if distance < 30:
+                        colormask_polygons.append(cnt)
 
+        [print(len(colormask_polygons))]
         return colormask_polygons
 
     def get_scoring_polygons(self, morphed_edges, original_center, ref_areas):
@@ -89,8 +99,8 @@ class DETECT_TARGET:
             merged_polygons: 조건을 만족하는 컨투어들을 추가 후, 병합(merge_polygons_filter_outer)한 결과.
         """
         cX_0, cY_0 = original_center
-        circularity_threshold = 0.7
-        min_area = 500
+        circularity_threshold = 0.8
+        min_area = 2000
         polygons = []
 
         contours, _ = cv2.findContours(
@@ -106,9 +116,10 @@ class DETECT_TARGET:
                 continue
             cX = int(moments["m10"] / moments["m00"])
             cY = int(moments["m01"] / moments["m00"])
-            if abs(cX - cX_0) < 30 and abs(cY - cY_0) < 30:
+            distance = np.sqrt((cX_0 - cX) ** 2 + (cY_0 - cY) ** 2)
+            if distance < 20:
                 circularity = 4 * np.pi * (area / (perimeter**2))
-                if circularity > circularity_threshold and area > min_area:
+                if circularity > circularity_threshold and area > max(ref_areas):
                     polygons.append(cnt)
                     # # 원본 색영역 중심과의 거리 계산
                     # distance = np.sqrt((cX_0 - cX) ** 2 + (cY_0 - cY) ** 2)
@@ -441,7 +452,9 @@ class DETECT_TARGET:
         roi = hsv[y1:y2, x1:x2]
 
         # 1. 색영역 마스크로 컨투어(폴리곤) 검출
-        colormask_polygons = self.get_color_mask_polygons(roi, (x1, y1))
+        colormask_polygons = self.get_color_mask_polygons(
+            roi, (center_x, center_y), (x1, y1)
+        )
         # for ma in colormask_polygons:
         #     cv2.polylines(output, [ma], True, (0, 255, 0), 2)
         # cv2.imshow("output", output)
@@ -460,10 +473,13 @@ class DETECT_TARGET:
             cY_0 = int(moments["m01"] / moments["m00"])
         else:
             cX_0, cY_0 = None, None
+            print("컬러마스크 컨투어 중심 계산 실패")
 
-        # # [디버깅] 가장 작은 면적과 가장 큰 면적의 폴리곤을 초록색으로 그리기
-        # cv2.polylines(output, [colormask_polygons[min_idx]], True, (0, 255, 0), 2)
-        # cv2.polylines(output, [colormask_polygons[max_idx]], True, (0, 255, 0), 2)
+        # [디버깅] 가장 작은 면적과 가장 큰 면적의 폴리곤을 초록색으로 그리기
+        cv2.polylines(output, [colormask_polygons[min_idx]], True, (0, 255, 0), 2)
+        cv2.polylines(output, [colormask_polygons[max_idx]], True, (0, 255, 0), 2)
+        cv2.imshow("output", output)
+        cv2.waitKey()
 
         # approxPolyDP로 Contour 근사 ------------------------------------------------
         # epsilon = arcLength의 일정 비율. 값이 작을수록 원래 윤곽과 가깝게, 클수록 단순화.
@@ -484,6 +500,7 @@ class DETECT_TARGET:
         # cv2.polylines(output, [ten_pt], True, (0, 255, 0), 2)  # 10점원
         # cv2.polylines(output, [eight_pt], True, (0, 255, 0), 2)  # 8점원
         # cv2.polylines(output, [six_pt], True, (0, 255, 0), 2)  # 6점원
+        # cv2.imshow("colomask", output)
         # cv2.waitKey()
 
         # 2. 엣지 기반 컨투어에서 조건에 따른 점수영역 검출
@@ -527,12 +544,12 @@ class DETECT_TARGET:
 
         shaft_positions = [(self.shaft_x, self.shaft_y)]
         score = self.assign_score((cX_0, cY_0), shaft_positions, score_coutour_list)
-        # print(f"점수 원 갯수: {len(score_coutour_list)}")
-        # # [디버깅] 및 시각화
-        # for i in score_coutour_list:
-        #     cv2.polylines(output, [np.int32(i)], True, (255, 0, 0), 2)
-        # cv2.imshow("out,", output)
-        # cv2.waitKey()
-        # cv2.destroyAllWindows()
+        print(f"점수 원 갯수: {len(score_coutour_list)}")
+        # [디버깅] 및 시각화
+        for i in score_coutour_list:
+            cv2.polylines(output, [np.int32(i)], True, (255, 0, 0), 2)
+        cv2.imshow("out,", output)
+        cv2.waitKey()
+        cv2.destroyAllWindows()
 
         return (cX_0, cY_0), score, score_coutour_list

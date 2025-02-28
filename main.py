@@ -7,6 +7,7 @@ from typing import Tuple, List
 from collections import defaultdict
 from detect_shaft_cv_legacy import DETECT_SHAFT
 from detect_target import DETECT_TARGET
+from detect_target_legacy import DETECT_TARGET_LEGACY
 from detect_target_test import DETECT_TARGET_TEST
 from visualize import TargetVisualizer
 
@@ -81,44 +82,96 @@ def main(image_path):
     # shaft_detector = DETECT_SHAFT(bg_image_path, frame_image_path, cv_params)
     # x, y = shaft_detector.main()
     # x, y = 938, 905
-    # x, y = 1054, 1081
+    x, y = 1054, 1081
     shaft_coords = [[862, 1068], [873, 1055], [870, 1186], [961, 1051], [1054, 1081]]
     hits = []
 
-    for shaft_coord in shaft_coords:
-        target_detector = DETECT_TARGET(
-            image_path,
-            shaft_coord[0],
-            shaft_coord[1],
-            min_area=5000,
-            max_area=1000000,
-            center_tolerance=300,
-            max_ellipses=15,
-        )
-        # start_time = time.time()
-        center, score, contour_list = target_detector.process_target_detection()
-        hits.append(
-            {
-                "point": (
-                    shaft_coord[0],
-                    shaft_coord[1],
-                ),
-                "score": score,
-            }
-        )
-    # Example usage:
-    img = cv2.imread(image_path)
+    # DEBUGGING-------------------------------------------------------------------------
+    target_detector = DETECT_TARGET(
+        image_path,
+        x,
+        y,
+        min_area=5000,
+        max_area=1000000,
+        center_tolerance=300,
+        max_ellipses=15,
+    )
+    _ = target_detector.process_target_detection()
 
-    # Create the visualizer
-    visualizer = TargetVisualizer(center[0], center[1])
+    # # LEGACY-----------------------------------------------------------------------------
+    # target_detector = DETECT_TARGET_LEGACY(
+    #     image_path,
+    #     x,
+    #     y,
+    #     min_area=5000,
+    #     max_area=1000000,
+    #     center_tolerance=300,
+    #     max_ellipses=15,
+    # )
+    # center, score, color_ellipses = target_detector.process_color_based_segmentation()
+    # edge_ellipses = target_detector.process_edge_based_detection()
+    # output = cv2.imread(image_path)
+    # circle_8 = (
+    #     color_ellipses[0][0],
+    #     (color_ellipses[0][1][0] * 3, color_ellipses[0][1][1] * 3),
+    #     color_ellipses[0][2],
+    # )
+    # circle_6 = (
+    #     color_ellipses[0][0],
+    #     (color_ellipses[0][1][0] * 5, color_ellipses[0][1][1] * 5),
+    #     color_ellipses[0][2],
+    # )
+    # cv2.ellipse(output, color_ellipses[0], (0, 255, 0), 2)  # 10점원
+    # cv2.ellipse(output, circle_8, (0, 255, 0), 2)  # 8점원
+    # cv2.ellipse(output, circle_6, (0, 255, 0), 2)  # 6점원
+    # for c_el in color_ellipses:
+    #     c_el = (c_el[0], (c_el[1][0] * 2, c_el[1][1] * 2), c_el[2])
+    #     cv2.ellipse(output, c_el, (0, 255, 0), 2)
+    # for e_el in edge_ellipses:
+    #     e_el = (e_el[0], (e_el[1][0] * 2, e_el[1][1] * 2), e_el[2])
+    #     cv2.ellipse(output, e_el, (255, 0, 0), 2)
+    #     cv2.ellipse(output, e_el, (0, 255, 0), 2)
+    # cv2.imshow("output", output)
+    # cv2.waitKey()
+    # cv2.destroyAllWindows()
+    # # -----------------------------------------------------------------------------------
 
-    # Draw the visualization
-    output_img = visualizer.visualize(img, hits)
+    # # Main ===========================================================================
+    # for shaft_coord in shaft_coords:
+    #     target_detector = DETECT_TARGET(
+    #         image_path,
+    #         shaft_coord[0],
+    #         shaft_coord[1],
+    #         min_area=5000,
+    #         max_area=1000000,
+    #         center_tolerance=300,
+    #         max_ellipses=15,
+    #     )
+    #     # start_time = time.time()
+    #     center, score, contour_list = target_detector.process_target_detection()
+    #     hits.append(
+    #         {
+    #             "point": (
+    #                 shaft_coord[0],
+    #                 shaft_coord[1],
+    #             ),
+    #             "score": score,
+    #         }
+    #     )
+    # # Example usage:
+    # img = cv2.imread(image_path)
 
-    # Display the image
-    cv2.imshow("Visualization", output_img)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # # Create the visualizer
+    # visualizer = TargetVisualizer(center[0], center[1])
+
+    # # Draw the visualization
+    # output_img = visualizer.visualize(img, hits)
+
+    # # Display the image
+    # cv2.imshow("Visualization", output_img)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+    # # =================================================================================
 
     # # Testing -----------------------------------------------------------------------
     # target_detector = DETECT_TARGET_TEST(
@@ -136,9 +189,9 @@ def main(image_path):
 
 
 if __name__ == "__main__":
-    home_dir = "./testset/20250116_091103/cam1_4set_warped"
+    home_dir = "./testset/20250116_091103/cam1_5set_warped/"
     # 폴더에서 파일 이름 읽기
-    all_files = os.listdir(home_dir)
+    all_files = sorted(os.listdir(home_dir))
 
     # pair_list = select_input_images(all_files)
 

@@ -162,9 +162,9 @@ class PerspectiveTransformer:
 
 
 if __name__ == "__main__":
-    input_folder = "/home/robin/code/archery_scoring/testset/20250116_091103/cam1_4set"
+    input_folder = "/home/robin/code/archery_scoring/testset/20250116_094453/cam1_4set"
     output_folder = (
-        "/home/robin/code/archery_scoring/testset/20250116_091103/cam1_4set_warped/"
+        "/home/robin/code/archery_scoring/testset/20250116_094453/cam1_4set_warped/"
     )
 
     transformer = PerspectiveTransformer(input_folder, output_folder)

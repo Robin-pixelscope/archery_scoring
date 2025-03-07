@@ -11,7 +11,7 @@ from detect_target_legacy import DETECT_TARGET_LEGACY
 from detect_target_test import DETECT_TARGET_TEST
 from visualize import TargetVisualizer
 
-from collections import defaultdict
+from collections import defaultdict, deque
 
 
 def select_input_images(files):
@@ -97,6 +97,7 @@ def main(image_path):
         max_ellipses=15,
     )
     _ = target_detector.process_target_detection()
+    return _
 
     # # LEGACY-----------------------------------------------------------------------------
     # target_detector = DETECT_TARGET_LEGACY(
@@ -189,15 +190,55 @@ def main(image_path):
 
 
 if __name__ == "__main__":
-    home_dir = "./testset/20250116_091103/cam1_5set_warped/"
+    # main -----------------------------------------------------------------------
+    home_dir = "./testset/20250116_091103/cam1_4set_warped"
     # 폴더에서 파일 이름 읽기
     all_files = sorted(os.listdir(home_dir))
+    # 처리할 이미지 확장자 목록 (필요에 따라 추가)
+    valid_extensions = [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
 
     # pair_list = select_input_images(all_files)
 
+    contours_list = deque(maxlen=1)
     for i in all_files:
-        image_path = os.path.join(home_dir, i)
-        print(image_path)
-        # frame_image_path = os.path.join(home_dir, i[1])
-        # print(f"Processing: {bg_image_path}, {frame_image_path}")
-        main(image_path)
+        if os.path.splitext(i)[1].lower() in valid_extensions:
+            image_path = os.path.join(home_dir, i)
+            print(image_path)
+            # frame_image_path = os.path.join(home_dir, i[1])
+            # print(f"Processing: {bg_image_path}, {frame_image_path}")
+            (cX_0, cY_0), score, contours_of_points = main(image_path)
+            if contours_of_points != None:
+                contours_list.append(contours_of_points)
+            # print(len(contours_of_points))
+            print(contours_list)
+            # 작성중########################################################################################
+            if score == None:
+                x, y = 1054, 1081
+                # DEBUGGING-------------------------------------------------------------------------
+                target_detector = DETECT_TARGET(
+                    image_path,
+                    x,
+                    y,
+                    min_area=5000,
+                    max_area=1000000,
+                    center_tolerance=300,
+                    max_ellipses=15,
+                )
+                score = target_detector.assign_score(
+                    (cX_0, cY_0), [(x, y)], contours_of_points
+                )
+            print(score)
+            # output_path = os.path.join(home_dir, "results2_thin+mask/" + i)
+            # cv2.imwrite(output_path, out)
+
+    # # BG 폴리곤으로 다음프레임에 그리기 ---------------------------------------------
+    # home_dir = "./testset/20250116_091103/cam1_4set_warped/warped_frame_0618.png"
+    # base_scoring_polygon = main(home_dir)
+
+    # next_home_dir = "./testset/20250116_091103/cam1_5set_warped/warped_frame_0877.png"
+    # im = cv2.imread(next_home_dir)
+    # for i in base_scoring_polygon:
+    #     cv2.polylines(im, [np.array(i)], True, (0, 255, 0), 2)
+    # cv2.imshow("output", im)
+    # cv2.waitKey()
+    # cv2.destroyAllWindows()

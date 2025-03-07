@@ -96,7 +96,11 @@ def tune_preprocessing_parameters(bg_image_path, frame_image_path):
 
 
 if __name__ == "__main__":
-    # 예시 실행
-    bg_image_path = "/home/robin/code/archery_scoring/testset/20250122_145719/cam2/warped_frame_0033.png"
-    frame_image_path = "/home/robin/code/archery_scoring/testset/20250122_145719/cam2/warped_frame_0038.png"
+    # # 예시 실행
+    # bg_image_path = "/home/robin/code/archery_scoring/testset/20250122_145719/cam2/warped_frame_0033.png"
+    # frame_image_path = "/home/robin/code/archery_scoring/testset/20250122_145719/cam2/warped_frame_0038.png"
+    # tune_preprocessing_parameters(bg_image_path, frame_image_path)
+
+    bg_image_path = "./testset/bg/20250116_091103/c3/warped_frame_0618.png"
+    frame_image_path = "./testset/bg/20250116_091103/c3/warped_frame_0619.png"
     tune_preprocessing_parameters(bg_image_path, frame_image_path)

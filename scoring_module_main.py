@@ -117,7 +117,7 @@ class PerspectiveTransformer:
         return path
 
 
-# 3. TargetDetector를 활용한 점수 산출 클래스
+# 3. TargetDetector를 활용한 점수영역 컨투어 검출 클래스
 class TargetDetector:
     def __init__(
         self,
@@ -154,6 +154,7 @@ class TargetDetector:
         return (cX_0, cY_0), contours_of_points
 
 
+# 4. Scorer를 활용한 점수 할당 클래스
 class Scorer:
     def __init__(self):
         self.scoring = ASSIGN_SCORE()
@@ -177,7 +178,7 @@ class Scorer:
         return score
 
 
-# 4. 정확도 검증 및 결과 JSON 저장 클래스
+# 5. 정확도 검증 및 결과 JSON 저장 클래스
 class AccuracyValidator:
     def __init__(
         self,

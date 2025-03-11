@@ -45,21 +45,24 @@ class PerspectiveTransformer:
             )
             return
 
-        height, width = image.shape[:2]
-        self.resize_ratio_w = 1920 / width if width > 1920 else 1.0
-        self.resize_ratio_h = 1080 / height if height > 1080 else 1.0
-        resized_image = cv2.resize(
-            image, (int(width * self.resize_ratio_w), int(height * self.resize_ratio_h))
-        )
+        self.first_image_points = [[1083, 372], [2859, 372], [3159, 1935], [1032, 2022]]
+        self.perform_perspective_transform()
 
-        self.temp_image = resized_image.copy()
+        # height, width = image.shape[:2]
+        # self.resize_ratio_w = 1920 / width if width > 1920 else 1.0
+        # self.resize_ratio_h = 1080 / height if height > 1080 else 1.0
+        # resized_image = cv2.resize(
+        #     image, (int(width * self.resize_ratio_w), int(height * self.resize_ratio_h))
+        # )
 
-        cv2.imshow("Select 4 Corners", self.temp_image)
+        # self.temp_image = resized_image.copy()
 
-        if self.current_image_index == 0:
-            cv2.setMouseCallback("Select 4 Corners", self.mouse_click)
-        else:
-            self.perform_perspective_transform()  # 첫 번째 이후 이미지는 자동 변환
+        # cv2.imshow("Select 4 Corners", self.temp_image)
+
+        # if self.current_image_index == 0:
+        #     cv2.setMouseCallback("Select 4 Corners", self.mouse_click)
+        # else:
+        #     self.perform_perspective_transform()  # 첫 번째 이후 이미지는 자동 변환
 
     def mouse_click(self, event, x, y, flags, param):
         """첫 번째 이미지에서 마우스 클릭으로 좌표 저장"""
@@ -162,10 +165,8 @@ class PerspectiveTransformer:
 
 
 if __name__ == "__main__":
-    input_folder = "/home/robin/code/archery_scoring/testset/20250116_094453/cam3_4set"
-    output_folder = (
-        "/home/robin/code/archery_scoring/testset/20250116_094453/cam3_4set_warped/"
-    )
+    input_folder = "/home/robin/code/archery_scoring/testset/20250116_091103/cam1_4set"
+    output_folder = "/home/robin/code/archery_scoring/cam1_4set_warped/"
 
     transformer = PerspectiveTransformer(input_folder, output_folder)
     transformer.run()

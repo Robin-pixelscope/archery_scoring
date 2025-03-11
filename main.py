@@ -1,17 +1,19 @@
 import cv2
 import os
-import numpy as np
 import time
+import numpy as np
+import argparse
 from dataclasses import dataclass
 from typing import Tuple, List
-from collections import defaultdict
-from detect_shaft_cv_legacy import DETECT_SHAFT
-from detect_target import DETECT_TARGET
-from detect_target_legacy import DETECT_TARGET_LEGACY
-from detect_target_test import DETECT_TARGET_TEST
-from visualize import TargetVisualizer
-
 from collections import defaultdict, deque
+
+# from detect_shaft_cv_legacy import DETECT_SHAFT
+# from detect_target_legacy import DETECT_TARGET_LEGACY
+# from detect_target_test import DETECT_TARGET_TEST
+from scoring_module.detect_shaft_points import ArcheryPoseEstimator
+from scoring_module.detect_target import DETECT_TARGET
+from scoring_module.visualize import TargetVisualizer
+from scoring_module.assign_score import ASSIGN_SCORE
 
 
 def select_input_images(files):
@@ -84,7 +86,6 @@ def main(image_path):
     # x, y = 938, 905
     x, y = 1054, 1081
     shaft_coords = [[862, 1068], [873, 1055], [870, 1186], [961, 1051], [1054, 1081]]
-    hits = []
 
     # DEBUGGING-------------------------------------------------------------------------
     target_detector = DETECT_TARGET(
@@ -98,44 +99,6 @@ def main(image_path):
     )
     _ = target_detector.process_target_detection()
     return _
-
-    # # LEGACY-----------------------------------------------------------------------------
-    # target_detector = DETECT_TARGET_LEGACY(
-    #     image_path,
-    #     x,
-    #     y,
-    #     min_area=5000,
-    #     max_area=1000000,
-    #     center_tolerance=300,
-    #     max_ellipses=15,
-    # )
-    # center, score, color_ellipses = target_detector.process_color_based_segmentation()
-    # edge_ellipses = target_detector.process_edge_based_detection()
-    # output = cv2.imread(image_path)
-    # circle_8 = (
-    #     color_ellipses[0][0],
-    #     (color_ellipses[0][1][0] * 3, color_ellipses[0][1][1] * 3),
-    #     color_ellipses[0][2],
-    # )
-    # circle_6 = (
-    #     color_ellipses[0][0],
-    #     (color_ellipses[0][1][0] * 5, color_ellipses[0][1][1] * 5),
-    #     color_ellipses[0][2],
-    # )
-    # cv2.ellipse(output, color_ellipses[0], (0, 255, 0), 2)  # 10점원
-    # cv2.ellipse(output, circle_8, (0, 255, 0), 2)  # 8점원
-    # cv2.ellipse(output, circle_6, (0, 255, 0), 2)  # 6점원
-    # for c_el in color_ellipses:
-    #     c_el = (c_el[0], (c_el[1][0] * 2, c_el[1][1] * 2), c_el[2])
-    #     cv2.ellipse(output, c_el, (0, 255, 0), 2)
-    # for e_el in edge_ellipses:
-    #     e_el = (e_el[0], (e_el[1][0] * 2, e_el[1][1] * 2), e_el[2])
-    #     cv2.ellipse(output, e_el, (255, 0, 0), 2)
-    #     cv2.ellipse(output, e_el, (0, 255, 0), 2)
-    # cv2.imshow("output", output)
-    # cv2.waitKey()
-    # cv2.destroyAllWindows()
-    # # -----------------------------------------------------------------------------------
 
     # # Main ===========================================================================
     # for shaft_coord in shaft_coords:
@@ -191,45 +154,118 @@ def main(image_path):
 
 if __name__ == "__main__":
     # main -----------------------------------------------------------------------
-    home_dir = "./testset/20250116_091103/cam1_4set_warped"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, default="./pose_s_add_best.pt")
+    parser.add_argument(
+        "--source",
+        type=str,
+        default="./testset/20250116_091103/cam1_4set/",
+    )
+    parser.add_argument(
+        "--source1",
+        type=str,
+        default="./testset/20250116_091103/cam2_4set/",
+    )
+    parser.add_argument("--perspective", type=str, default="./20250116.txt")
+    parser.add_argument("--output", type=str, default="./output_results")
+
+    args = parser.parse_args()
+
+    arrow_detector = ArcheryPoseEstimator(
+        model_path=args.model,
+        source=args.source,
+        source1=args.source1,
+        perspective_file=args.perspective,
+        output_dir=args.output,
+    )
+
+    perspective_img, shaft_coords = arrow_detector.process_images()
+
+    home_dir = "./cam1_4set_warped"
     # 폴더에서 파일 이름 읽기
     all_files = sorted(os.listdir(home_dir))
     # 처리할 이미지 확장자 목록 (필요에 따라 추가)
     valid_extensions = [".jpg", ".jpeg", ".png", ".bmp", ".tiff"]
+    hits = []
 
-    # pair_list = select_input_images(all_files)
+    scoring = ASSIGN_SCORE()
 
-    contours_list = deque(maxlen=1)
+    for coord in shaft_coords:
+        (x, y) = coord
+    contours_list = deque(maxlen=10)
     for i in all_files:
         if os.path.splitext(i)[1].lower() in valid_extensions:
             image_path = os.path.join(home_dir, i)
             print(image_path)
             # frame_image_path = os.path.join(home_dir, i[1])
             # print(f"Processing: {bg_image_path}, {frame_image_path}")
-            (cX_0, cY_0), score, contours_of_points = main(image_path)
-            if contours_of_points != None:
-                contours_list.append(contours_of_points)
-            # print(len(contours_of_points))
-            print(contours_list)
-            # 작성중########################################################################################
-            if score == None:
-                x, y = 1054, 1081
-                # DEBUGGING-------------------------------------------------------------------------
-                target_detector = DETECT_TARGET(
-                    image_path,
-                    x,
-                    y,
-                    min_area=5000,
-                    max_area=1000000,
-                    center_tolerance=300,
-                    max_ellipses=15,
-                )
-                score = target_detector.assign_score(
-                    (cX_0, cY_0), [(x, y)], contours_of_points
-                )
-            print(score)
-            # output_path = os.path.join(home_dir, "results2_thin+mask/" + i)
-            # cv2.imwrite(output_path, out)
+            target_detector = DETECT_TARGET(
+                image_path,
+                circularity_threshold=0.85,  # 원형도 임계값
+                min_area=10000,  # 너무 작은 영역은 제거
+                max_area=10000000,  # 너무 큰 영역은 제거
+                min_length=500.0,  # 윤곽 길이(둘레)가 너무 짧은 것 제거
+                max_length=20000.0,  # 너무 긴 것도 제거
+                center_tolerance=50,  # 중심 좌표 허용 오차
+                max_contours_count=10,  # 최대 컨투어 개수
+                # debug = False,  # 디버깅 모드
+            )
+            (cX_0, cY_0), contours_of_points = (
+                target_detector.process_target_detection()
+            )
+            if contours_of_points != None:  # 컨투어를 10개 찾았으면 추가
+                score = scoring.assign_score((cX_0, cY_0), [(x, y)], contours_of_points)
+                for c in contours_of_points:
+                    contours_list.append(c)
+            if contours_of_points == None:
+                score = scoring.assign_score((cX_0, cY_0), [(x, y)], contours_list)
+            hits.append(
+                {
+                    "point": (
+                        x,
+                        y,
+                    ),
+                    "score": score,
+                }
+            )
+            # Example usage:
+            img = cv2.imread(image_path)
+
+            # Create the visualizer
+            visualizer = TargetVisualizer(cX_0, cY_0)
+
+            # Draw the visualization
+            output_img = visualizer.visualize(img, hits)
+
+            # Display the image
+            cv2.imshow("Visualization", output_img)
+            cv2.waitKey(0)
+            cv2.destroyAllWindows()
+
+        # # =================================================================================
+        # # data가 [x, y] 형식인지 검사: 길이가 2이고, 각 요소가 숫자인 경우
+        # if (
+        #     isinstance(self.shaft_coords, list)
+        #     and len(self.shaft_coords) == 2
+        #     and all(isinstance(v, (int, float)) for v in self.shaft_coords)
+        # ):
+        #     score = self.assign_score(
+        #         (cX_0, cY_0), self.shaft_coords, score_coutour_list
+        #     )
+        # # data가 리스트의 리스트([[x1, y1], [x2, y2], ...]) 형식이면 각 좌표를 반복 처리
+        # elif (
+        #     isinstance(self.shaft_coords, list)
+        #     and len(self.shaft_coords) > 0
+        #     and isinstance(self.shaft_coords[0], list)
+        # ):
+        #     for point in self.shaft_coords:
+        #         # 각 point가 [x, y] 형식인지 검사 (안전 검사)
+        #         if isinstance(point, list) and len(point) == 2:
+        #             score = self.assign_score((cX_0, cY_0), point, score_coutour_list)
+        #         else:
+        #             print("잘못된 좌표 형식:", point)
+        # else:
+        #     print("알 수 없는 형식입니다.")
 
     # # BG 폴리곤으로 다음프레임에 그리기 ---------------------------------------------
     # home_dir = "./testset/20250116_091103/cam1_4set_warped/warped_frame_0618.png"

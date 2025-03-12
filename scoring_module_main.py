@@ -153,6 +153,31 @@ class TargetDetector:
 
         return (cX_0, cY_0), contours_of_points
 
+    def get_fallback_contours(self, center):
+        """
+        center: (x, y) 형태의 중심 좌표
+        num_points: 원 근사를 위한 다각형 꼭짓점 개수 (기본값 36)
+
+        Returns:
+            10개의 원 모양 다각형을 담은 리스트.
+            각 다각형은 (x, y) 좌표 튜플의 리스트로 구성됨.
+        """
+        cx, cy = center
+        polygons = []
+        num_points = 50
+
+        for n in range(1, 11):
+            radius = 92 * n
+            polygon = []
+            for i in range(num_points * n):
+                theta = 2 * np.pi * i / num_points
+                x = cx + radius * np.cos(theta)
+                y = cy + radius * np.sin(theta)
+                polygon.append((x, y))
+            polygons.append(polygon)
+
+        return polygons
+
 
 # 4. Scorer를 활용한 점수 할당 클래스
 class Scorer:
@@ -373,8 +398,13 @@ def main(args):
             for c in contours:
                 contours_list.append(c)
         else:
-            print("@@@백업 컨투어 사용@@@")
-            score = scorer.get_score(center, [(x, y)], contours_list)
+            if len(contours_list) > 0:
+                print("@@@백업 컨투어 사용@@@")
+                score = scorer.get_score(center, [(x, y)], contours_list)
+            else:
+                print("###기본 컨투어 사용###")
+                fallback_contours = target_detector.get_fallback_contours(center)
+                score = scorer.get_score(center, [(x, y)], fallback_contours)
         # print(f"{selected_img_name}: 점수 = {score}")
         hits.append(
             {
